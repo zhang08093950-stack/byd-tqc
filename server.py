@@ -525,17 +525,10 @@ def api_write_scores():
 
 
 # ---------------------------------------------------------------------------
-# Startup — init DB every time the module loads (gunicorn or flask run)
-# ---------------------------------------------------------------------------
-import sys
-print(">>> server.py loaded, calling init_db()...", file=sys.stderr, flush=True)
-init_db()
-print(">>> init_db() complete", file=sys.stderr, flush=True)
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    init_db()
     print("Starting TQC server on http://localhost:8789", flush=True)
     app.run(host="0.0.0.0", port=8789, debug=True)
