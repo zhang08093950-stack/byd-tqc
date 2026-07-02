@@ -1,20 +1,5 @@
 """
 tqc/server — Flask web application for the TQC scoring tool.
-
-Routes:
-  /                       Main checklist
-  /item/<sn>              Item detail
-  /review                 Review summary
-  /export                 Export page
-  /api/confirm            Confirm a single score
-  /api/confirm-batch      Confirm all auto-scores for a workshop
-  /api/upload             Upload evidence photo
-  /api/evidence/<id>      Serve full evidence image
-  /api/evidence/<id>/thumb Serve evidence thumbnail
-  /api/evidence/<id>/delete Delete evidence
-  /api/sync-rules         Sync rules from Google Sheets
-  /api/auto-score         Run auto-scoring for a workshop
-  /api/write-scores       Write confirmed scores to Google Sheets
 """
 
 from flask import Flask, render_template, request, jsonify, send_file, g
@@ -22,7 +7,7 @@ from io import BytesIO
 
 from db import (
     init_db, all_rules, rules_by_way, scores_for_workshop,
-    upsert_score, get_evidence, get_evidence_data, progress_stats, get_conn, get_db_path,
+    upsert_score, get_evidence, get_evidence_data, progress_stats, get_conn,
 )
 from rule_engine import run_auto_scoring
 from evidence_store import save_evidence, delete_evidence
@@ -41,7 +26,6 @@ from translations import T as TRANSLATIONS
 
 
 def _(key, *args):
-    """Translate key to current language. Usage: _('score') or _('max_pts', 100)."""
     lang = g.get("lang", "en")
     text = TRANSLATIONS.get(lang, {}).get(key, TRANSLATIONS["en"].get(key, key))
     if args:
@@ -63,7 +47,6 @@ def set_country_db():
 
 @app.context_processor
 def inject_nav_counts():
-    """Provide pending counts and translation helper for templates."""
     pending = 0
     try:
         conn = get_conn()
@@ -75,7 +58,6 @@ def inject_nav_counts():
     except Exception:
         pass
     def t(rule, field):
-        """Return the language-appropriate translation of a rule field."""
         lang = g.get("lang", "en")
         if lang == "en":
             return rule.get(field, "")
@@ -86,18 +68,15 @@ def inject_nav_counts():
 
 
 def _validate_workshop(workshop):
-    """Return validated workshop name."""
     return (workshop or "").strip()
 
 
 def _get_quarter():
-    """Return validated quarter, defaulting to '2026 Q2'."""
     q = (request.args.get("quarter") or "2026 Q2").strip()
     return q if q in QUARTERS else "2026 Q2"
 
 
 def _group_by_module(rules):
-    """Group a list of rule dicts by their 'category' (module) field."""
     grouped = {}
     for r in rules:
         mod = r.get("category", "Other") or "Other"
@@ -111,37 +90,20 @@ def _group_by_module(rules):
 
 @app.route("/")
 def index():
-    """Main checklist page — or country selector landing."""
     country = request.args.get("country", "")
     if not country:
         return render_template("landing.html", countries=COUNTRIES)
     workshop = _validate_workshop(request.args.get("workshop"))
     quarter = _get_quarter()
 
-    import sys, sqlite3 as _sql
-    _dbp = get_db_path()
-    _conn = _sql.connect(_dbp)
-    _conn.row_factory = _sql.Row
-    _sheet = f"{quarter} Quarterly TQC"
-    _raw = _conn.execute("SELECT COUNT(*) FROM tqc__rules WHERE sheet_name=?", (_sheet,)).fetchone()[0]
-    _raw_on = _conn.execute("SELECT COUNT(*) FROM tqc__rules WHERE inspection_way='Online' AND sheet_name=?", (_sheet,)).fetchone()[0]
-    _raw_site = _conn.execute("SELECT COUNT(*) FROM tqc__rules WHERE inspection_way='On-site' AND sheet_name=?", (_sheet,)).fetchone()[0]
-    _conn.close()
     online_rules = rules_by_way("Online", quarter)
     onsite_rules = rules_by_way("On-site", quarter)
-    import db as _dbmod
-    print(f"[index] quarter={quarter} sheet={_sheet} db={_dbp}", file=sys.stderr, flush=True)
-    print(f"[index] db.__file__={_dbmod.__file__} DATA_DIR={_dbmod.DATA_DIR}", file=sys.stderr, flush=True)
-    print(f"[index] RAW: total={_raw} online={_raw_on} onsite={_raw_site}", file=sys.stderr, flush=True)
-    print(f"[index] FUNC: online={len(online_rules)} onsite={len(onsite_rules)}", file=sys.stderr, flush=True)
     scores = scores_for_workshop(workshop)
 
-    # Merge scores into rules (look up by SN)
     def merge(rule_list):
         result = []
         for r in rule_list:
             d = dict(r)
-            # Ensure translated fields are present
             d.setdefault("inspection_item_zh", "")
             d.setdefault("inspection_item_es", "")
             d.setdefault("category_zh", "")
@@ -181,25 +143,20 @@ def index():
 
 @app.route("/item/<sn>")
 def item_detail(sn):
-    """Item detail page."""
     workshop = _validate_workshop(request.args.get("workshop"))
     quarter = _get_quarter()
 
-    # Get rule by SN from tqc__rules
     all_rules_list = all_rules(quarter)
     rules_by_sn = {r["sn"]: r for r in all_rules_list}
     rule = rules_by_sn.get(sn)
     if rule is None:
         return "Item not found", 404
 
-    # Get score for (sn, workshop)
     scores = scores_for_workshop(workshop)
     score = scores.get(sn, {})
 
-    # Get evidence list for (sn, workshop)
     evidence = get_evidence(sn, workshop)
 
-    # Compute prev/next SN for quick navigation
     all_sns = [r["sn"] for r in all_rules_list]
     try:
         idx = all_sns.index(sn)
@@ -226,7 +183,6 @@ def item_detail(sn):
 
 @app.route("/review")
 def review():
-    """Review summary page."""
     workshop = _validate_workshop(request.args.get("workshop"))
     quarter = _get_quarter()
     status_filter = request.args.get("filter", "all")
@@ -234,7 +190,6 @@ def review():
     rules = all_rules(quarter)
     scores = scores_for_workshop(workshop)
 
-    # Build items with status classification
     counts = {"auto": 0, "confirmed": 0, "pending": 0, "manual": 0}
     items = []
 
@@ -244,11 +199,6 @@ def review():
         confirmed = s.get("confirmed", 0)
         score_val = s.get("score")
 
-        # Determine status:
-        #   "auto"      — has auto_score, not confirmed
-        #   "confirmed" — confirmed=1
-        #   "pending"   — no auto_score, not confirmed, score==0
-        #   "manual"    — otherwise
         if auto_score is not None and not confirmed:
             status = "auto"
         elif confirmed:
@@ -300,7 +250,6 @@ def review():
 
 @app.route("/export")
 def export():
-    """Export page."""
     workshop = _validate_workshop(request.args.get("workshop"))
     quarter = _get_quarter()
 
@@ -308,7 +257,6 @@ def export():
     scores = scores_for_workshop(workshop)
     stats = progress_stats(workshop)
 
-    # Merge scores into rules
     merged = []
     for r in rules:
         d = dict(r)
@@ -318,10 +266,8 @@ def export():
         d["_confirmed"] = s.get("confirmed", 0)
         merged.append(d)
 
-    # Group by module
     modules = _group_by_module(merged)
 
-    # Build module-level summaries
     module_summaries = []
     for mod_name, mod_rules in modules.items():
         scored = sum(1 for r in mod_rules if r["_score"] is not None)
@@ -350,12 +296,11 @@ def export():
 
 
 # ---------------------------------------------------------------------------
-# API Endpoints (all return JSON)
+# API Endpoints
 # ---------------------------------------------------------------------------
 
 @app.route("/api/confirm", methods=["POST"])
 def api_confirm():
-    """Confirm a single score. Body: {sn, workshop, score, max_score, auto_score, remarks}."""
     data = request.get_json(silent=True) or {}
     sn = data.get("sn")
     workshop = data.get("workshop")
@@ -383,7 +328,6 @@ def api_confirm():
 
 @app.route("/api/undo-confirm", methods=["POST"])
 def api_undo_confirm():
-    """Undo score confirmation: set score and confirmed back to null."""
     data = request.get_json(silent=True) or {}
     sn = data.get("sn")
     workshop = data.get("workshop")
@@ -400,7 +344,6 @@ def api_undo_confirm():
 
 @app.route("/api/confirm-batch", methods=["POST"])
 def api_confirm_batch():
-    """Batch confirm: UPDATE all auto-scored, unconfirmed rows for a workshop."""
     data = request.get_json(silent=True) or {}
     workshop = data.get("workshop")
 
@@ -427,7 +370,6 @@ def api_confirm_batch():
 
 @app.route("/api/upload", methods=["POST"])
 def api_upload():
-    """Upload evidence file. Multipart form: file, sn, workshop."""
     sn = request.form.get("sn")
     workshop = request.form.get("workshop")
     quarter = request.form.get("quarter")
@@ -454,7 +396,6 @@ def api_upload():
 
 @app.route("/api/evidence/<int:eid>")
 def api_evidence(eid):
-    """Serve full evidence image via send_file."""
     record = get_evidence_data(eid)
     if record is None:
         return jsonify({"error": "Evidence not found"}), 404
@@ -470,7 +411,6 @@ def api_evidence(eid):
 
 @app.route("/api/evidence/<int:eid>/thumb")
 def api_evidence_thumb(eid):
-    """Serve evidence thumbnail, fallback to full image."""
     record = get_evidence_data(eid)
     if record is None:
         return jsonify({"error": "Evidence not found"}), 404
@@ -479,7 +419,6 @@ def api_evidence_thumb(eid):
     if thumb:
         return send_file(BytesIO(thumb), mimetype="image/jpeg")
 
-    # Fallback to full image
     data = record.get("data")
     if data is None:
         return jsonify({"error": "No data for this evidence"}), 404
@@ -489,14 +428,12 @@ def api_evidence_thumb(eid):
 
 @app.route("/api/evidence/<int:eid>/delete", methods=["POST"])
 def api_evidence_delete(eid):
-    """Delete an evidence record."""
     delete_evidence(eid)
     return jsonify({"ok": True, "deleted": eid})
 
 
 @app.route("/api/sync-rules", methods=["POST"])
 def api_sync_rules():
-    """Sync rules from Google Sheets to database. Body: {quarter}."""
     data = request.get_json(silent=True) or {}
     quarter = data.get("quarter")
     try:
@@ -508,7 +445,6 @@ def api_sync_rules():
 
 @app.route("/api/auto-score", methods=["POST"])
 def api_auto_score():
-    """Run auto-scoring for a workshop. Body: {workshop}."""
     data = request.get_json(silent=True) or {}
     workshop = data.get("workshop")
 
@@ -524,7 +460,6 @@ def api_auto_score():
 
 @app.route("/api/write-scores", methods=["POST"])
 def api_write_scores():
-    """Write confirmed scores to Google Sheets. Body: {workshop}."""
     data = request.get_json(silent=True) or {}
     workshop = data.get("workshop")
 
@@ -538,28 +473,15 @@ def api_write_scores():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/db")
-def api_db():
-    import os, sqlite3
-    from db import get_db_path, rules_by_way, _quarter_sheet
-    p = get_db_path()
-    c = sqlite3.connect(p).execute("SELECT COUNT(*) FROM tqc__rules").fetchone()[0]
-    q = _quarter_sheet("2026 Q2")
-    online = rules_by_way("Online", "2026 Q2")
-    onsite = rules_by_way("On-site", "2026 Q2")
-    return {
-        "db_path": p, "rules": c, "TQC_DATA_DIR": os.environ.get("TQC_DATA_DIR", "NONE"),
-        "quarter_sheet": q,
-        "online_count": len(online),
-        "onsite_count": len(onsite),
-        "sample_online": online[0] if online else None,
-    }
+# ---------------------------------------------------------------------------
+# Startup — init DB inside THIS process (gunicorn or flask run)
+# ---------------------------------------------------------------------------
+init_db()
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    init_db()
     print("Starting TQC server on http://localhost:8789", flush=True)
     app.run(host="0.0.0.0", port=8789, debug=True)
