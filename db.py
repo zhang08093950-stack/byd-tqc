@@ -9,7 +9,10 @@ import os
 import sqlite3
 from flask import g
 
-DATA_DIR = os.environ.get("TQC_DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
+# On Render: /opt/render/project/src/data/
+# Locally: project/data/
+_BASE = "/opt/render/project/src" if os.path.exists("/opt/render/project/src") else os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(_BASE, "data")
 DEFAULT_DB = os.path.join(DATA_DIR, "uruguay.db")
 COUNTRY_DB = {
     "Uruguay":  os.path.join(DATA_DIR, "uruguay.db"),
@@ -132,7 +135,7 @@ def init_db():
 def _import_seed(conn):
     """Import seed rules from seed_rules.json if available."""
     import json, os, sys
-    seed_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'seed_rules.json')
+    seed_path = os.path.join(_BASE, 'seed_rules.json')
     if not os.path.exists(seed_path):
         print(f"[seed] No seed file at {seed_path}", file=sys.stderr)
         return
