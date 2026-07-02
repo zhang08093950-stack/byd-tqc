@@ -65,6 +65,9 @@ def get_service():
 
     Uses Service Account if key file exists, otherwise falls back to OAuth.
     """
+    import sys
+    print(f"[gsheets] SA_KEY_PATH={SA_KEY_PATH}", file=sys.stderr)
+    print(f"[gsheets] exists={os.path.exists(SA_KEY_PATH)}", file=sys.stderr)
     # Prefer Service Account
     if os.path.exists(SA_KEY_PATH):
         creds = service_account.Credentials.from_service_account_file(
@@ -73,7 +76,13 @@ def get_service():
         return build("sheets", "v4", credentials=creds, cache_discovery=False)
 
     # Fallback: OAuth user consent
-    from google_auth_oauthlib.flow import InstalledAppFlow
+    try:
+        from google_auth_oauthlib.flow import InstalledAppFlow
+    except ImportError:
+        raise RuntimeError(
+            f"Service account key not found at {SA_KEY_PATH}. "
+            "Set GOOGLE_APPLICATION_CREDENTIALS or install google-auth-oauthlib."
+        )
     creds = None
     if os.path.exists(TOKEN_PATH):
         with open(TOKEN_PATH, "rb") as f:
