@@ -44,9 +44,14 @@ def init_db():
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             sn            TEXT NOT NULL,
             category      TEXT,
+            category_zh   TEXT,
+            category_es   TEXT,
             inspection_item  TEXT NOT NULL,
+            inspection_item_zh TEXT,
+            inspection_item_es TEXT,
             inspection_way   TEXT NOT NULL,
             inspection_standard TEXT,
+            rating_explanation TEXT,
             max_score     INTEGER DEFAULT 100,
             sort_order    INTEGER DEFAULT 0,
             sheet_name    TEXT NOT NULL,
@@ -95,6 +100,16 @@ def init_db():
             UNIQUE(month, workshop)
         );
     """)
+        # Migrate: add columns that may be missing from older schema
+        for col in [
+            "category_zh TEXT", "category_es TEXT",
+            "inspection_item_zh TEXT", "inspection_item_es TEXT",
+            "rating_explanation TEXT",
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE tqc__rules ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass  # column already exists
         conn.commit()
     finally:
         conn.close()
