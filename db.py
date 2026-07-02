@@ -20,10 +20,14 @@ COUNTRY_DB = {
 
 def get_db_path():
     """Return the current database path based on the active country."""
+    import sys
     try:
-        return g.get("db_path", DEFAULT_DB)
+        path = g.get("db_path", DEFAULT_DB)
     except RuntimeError:
-        return DEFAULT_DB  # no Flask context (e.g. startup)
+        path = DEFAULT_DB
+    # DEBUG
+    print(f"[get_db_path] g.db_path={path}  DEFAULT_DB={DEFAULT_DB}", file=sys.stderr, flush=True)
+    return path
 
 
 def get_conn():
