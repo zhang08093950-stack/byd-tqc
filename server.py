@@ -19,6 +19,7 @@ Routes:
 
 from flask import Flask, render_template, request, jsonify, send_file, g
 from io import BytesIO
+# deploy trigger
 
 from db import (
     init_db, all_rules, rules_by_way, scores_for_workshop,
