@@ -524,27 +524,18 @@ def api_write_scores():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/debug-db")
-def api_debug_db():
-    """Temp: check DB state."""
-    from db import get_conn, get_db_path
-    conn = get_conn()
-    path = get_db_path()
-    count = conn.execute("SELECT COUNT(*) FROM tqc__rules").fetchone()[0]
-    sample = conn.execute("SELECT sn, inspection_item, inspection_item_es FROM tqc__rules LIMIT 3").fetchall()
-    conn.close()
-    return jsonify({
-        "db_path": path,
-        "rule_count": count,
-        "samples": [{"sn": r["sn"], "en": r["inspection_item"], "es": r["inspection_item_es"]} for r in sample],
-    })
+# ---------------------------------------------------------------------------
+# Startup — init DB every time the module loads (gunicorn or flask run)
+# ---------------------------------------------------------------------------
+import sys
+print(">>> server.py loaded, calling init_db()...", file=sys.stderr, flush=True)
+init_db()
+print(">>> init_db() complete", file=sys.stderr, flush=True)
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("Initializing database...")
-    init_db()
-    print("Starting TQC server on http://localhost:8789")
+    print("Starting TQC server on http://localhost:8789", flush=True)
     app.run(host="0.0.0.0", port=8789, debug=True)
