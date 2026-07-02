@@ -129,7 +129,9 @@ def index():
     _conn.close()
     online_rules = rules_by_way("Online", quarter)
     onsite_rules = rules_by_way("On-site", quarter)
+    import db as _dbmod
     print(f"[index] quarter={quarter} sheet={_sheet} db={_dbp}", file=sys.stderr, flush=True)
+    print(f"[index] db.__file__={_dbmod.__file__} DATA_DIR={_dbmod.DATA_DIR}", file=sys.stderr, flush=True)
     print(f"[index] RAW: total={_raw} online={_raw_on} onsite={_raw_site}", file=sys.stderr, flush=True)
     print(f"[index] FUNC: online={len(online_rules)} onsite={len(onsite_rules)}", file=sys.stderr, flush=True)
     scores = scores_for_workshop(workshop)
