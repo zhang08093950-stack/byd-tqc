@@ -555,6 +555,14 @@ def api_db():
     }
 
 # ---------------------------------------------------------------------------
+# Startup — run once when module loads (gunicorn imports this)
+# ---------------------------------------------------------------------------
+import sys as _sys
+print(">>> server.py loading, calling init_db()...", file=_sys.stderr, flush=True)
+init_db()
+print(">>> init_db() done", file=_sys.stderr, flush=True)
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
