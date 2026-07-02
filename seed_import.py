@@ -3,14 +3,16 @@ import json
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BASE_DIR)
 from db import get_conn
 
 def import_seed():
-    seed_path = os.path.join(os.path.dirname(__file__), 'seed_rules.json')
+    seed_path = os.path.join(BASE_DIR, 'seed_rules.json')
+    print(f"[seed] Looking for {seed_path}", file=sys.stderr)
     if not os.path.exists(seed_path):
-        print("No seed file found, skipping.")
-        return
+        print(f"[seed] ERROR: seed_rules.json not found at {seed_path}", file=sys.stderr)
+        sys.exit(1)
 
     with open(seed_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -30,7 +32,7 @@ def import_seed():
     conn.commit()
     count = conn.execute("SELECT COUNT(*) FROM tqc__rules").fetchone()[0]
     conn.close()
-    print(f"Seed imported: {count} rules")
+    print(f"[seed] Imported: {count} rules", file=sys.stderr)
 
 if __name__ == '__main__':
     import_seed()
