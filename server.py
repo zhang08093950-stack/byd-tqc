@@ -120,6 +120,8 @@ def index():
 
     online_rules = rules_by_way("Online", quarter)
     onsite_rules = rules_by_way("On-site", quarter)
+    import sys
+    print(f"[index] online={len(online_rules)} onsite={len(onsite_rules)} quarter={quarter}", file=sys.stderr, flush=True)
     scores = scores_for_workshop(workshop)
 
     # Merge scores into rules (look up by SN)
