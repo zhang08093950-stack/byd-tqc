@@ -20,10 +20,14 @@ COUNTRY_DB = {
 
 def get_db_path():
     """Return the current database path based on the active country."""
+    import sys
     try:
-        return g.get("db_path", DEFAULT_DB)
+        path = g.get("db_path", DEFAULT_DB)
     except RuntimeError:
-        return DEFAULT_DB
+        path = DEFAULT_DB
+    # DEBUG
+    print(f"[get_db_path] g.db_path={path}  DEFAULT_DB={DEFAULT_DB}", file=sys.stderr, flush=True)
+    return path
 
 
 def get_conn():
@@ -127,10 +131,10 @@ def init_db():
 
 def _import_seed(conn):
     """Import seed rules from seed_rules.json if available."""
-    import json, os
+    import json, os, sys
     seed_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'seed_rules.json')
     if not os.path.exists(seed_path):
-        print(f"[seed] NOT FOUND: {seed_path} cwd={os.getcwd()}", flush=True)
+        print(f"[seed] No seed file at {seed_path}", file=sys.stderr)
         return
     with open(seed_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -143,7 +147,7 @@ def _import_seed(conn):
             f"INSERT OR IGNORE INTO tqc__rules ({col_names}) VALUES ({placeholders})",
             vals
         )
-    print(f"[seed] Imported {len(data['rows'])} rules from {seed_path}", flush=True)
+    print(f"[seed] Imported {len(data['rows'])} rules", file=sys.stderr)
 
 
 def _quarter_sheet(quarter):
