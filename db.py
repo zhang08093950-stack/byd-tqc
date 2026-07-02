@@ -9,7 +9,7 @@ import os
 import sqlite3
 from flask import g
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DATA_DIR = os.environ.get("TQC_DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
 DEFAULT_DB = os.path.join(DATA_DIR, "uruguay.db")
 COUNTRY_DB = {
     "Uruguay":  os.path.join(DATA_DIR, "uruguay.db"),
