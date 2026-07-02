@@ -524,6 +524,21 @@ def api_write_scores():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/debug-db")
+def api_debug_db():
+    """Temp: check DB state."""
+    from db import get_conn, get_db_path
+    conn = get_conn()
+    path = get_db_path()
+    count = conn.execute("SELECT COUNT(*) FROM tqc__rules").fetchone()[0]
+    sample = conn.execute("SELECT sn, inspection_item, inspection_item_es FROM tqc__rules LIMIT 3").fetchall()
+    conn.close()
+    return jsonify({
+        "db_path": path,
+        "rule_count": count,
+        "samples": [{"sn": r["sn"], "en": r["inspection_item"], "es": r["inspection_item_es"]} for r in sample],
+    })
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
