@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header" translate="no">
+  <h1>{{ _('tqc_inspection') }}</h1>
+  <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+    <select class="workshop-select" style="max-width: 120px;" onchange="location.href='/?country=' + this.value + '&workshop={{ workshop }}&quarter={{ quarter }}&lang={{ g.lang }}'">
+      {% for c in countries %}<option value="{{ c }}" {% if c == country %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <input class="workshop-input" style="max-width: 140px;" value="{{ workshop }}"
+           onchange="location.href='/?workshop=' + encodeURIComponent(this.value) + '&quarter={{ quarter }}&lang={{ g.lang }}'"
+           placeholder="{{ _('workshop') }}">
+    <select class="workshop-select" style="max-width: 140px;" onchange="location.href='/?workshop={{ workshop }}&quarter=' + this.value + '&lang={{ g.lang }}'">
+      {% for q in quarters %}<option value="{{ q }}" {% if q == quarter %}selected{% endif %}>{{ q }}</option>{% endfor %}
+    </select>
+  </div>
+</div>
+
+{% if stats %}
+<div class="stats-bar">
+  <span>{{ stats.scored_count }} / {{ stats.total_items }} {{ _('scored_items') }}</span>
+  <span>{{ stats.scored_points }} / {{ stats.total_points }} {{ _('pts') }}</span>
+</div>
+{% endif %}
+
+{% macro module_block(mod_name, mod_items) %}
+<div class="module-group">
+  {% set mod_scored = mod_items | selectattr('_score', 'ne', none) | list | length %}
+  {% set mod_total = mod_items | length %}
+  <div class="module-title">
+    <span>{{ t(mod_items[0], 'category') if mod_items else mod_name }}</span>
+    <span class="module-stat">{{ mod_scored }}/{{ mod_total }}</span>
+  </div>
+  {% for item in mod_items %}
+  <a href="/item/{{ item.sn }}?country={{ country }}&workshop={{ workshop }}&ref=index&lang={{ g.lang }}" class="item-row stagger-in stagger-{{ loop.index if loop.index <= 10 else 10 }}">
+    <span class="status-dot
+      {% if item._confirmed %}done
+      {% elif item._auto_score is not none %}auto
+      {% elif item._score is not none and item._score > 0 %}manual
+      {% else %}pending{% endif %}
+    "></span>
+    <span class="item-sn">{{ item.sn }}</span>
+    <span class="item-name">{{ t(item, 'inspection_item') }}</span>
+    <span class="item-score {% if item._score is not none %}got{% else %}none{% endif %}">
+      {% if item._score is not none %}{{ item._score }}{% else %}-{% endif %}<span class="score-max">/{{ item.max_score }}</span>
+    </span>
+  </a>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% if online_modules %}
+<div class="section-card page-in">
+  <div class="section-header" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed')">
+    <span>{{ _('online') }}</span>
+    <span class="section-arrow">▼</span>
+  </div>
+  <div class="section-body">
+    {% for mod_name, mod_items in online_modules.items() %}
+    {{ module_block(mod_name, mod_items) }}
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if onsite_modules %}
+<div class="section-card page-in">
+  <div class="section-header" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed')">
+    <span>{{ _('on_site') }}</span>
+    <span class="section-arrow">▼</span>
+  </div>
+  <div class="section-body">
+    {% for mod_name, mod_items in onsite_modules.items() %}
+    {{ module_block(mod_name, mod_items) }}
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if not online_modules and not onsite_modules %}
+<div class="empty-state">{{ _('no_data_sync') }}</div>
+{% endif %}
+
+{% endblock %}

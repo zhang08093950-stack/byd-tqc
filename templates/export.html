@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header" translate="no">
+  <h1>{{ _('export') }}</h1>
+  <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+    <select class="workshop-select" style="max-width: 120px;" onchange="location.href='/export?country=' + this.value + '&workshop={{ workshop }}&quarter={{ quarter }}&lang={{ g.lang }}'">
+      {% for c in countries %}<option value="{{ c }}" {% if c == country %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <input class="workshop-input" style="max-width: 140px;" value="{{ workshop }}"
+           onchange="location.href='/export?workshop=' + encodeURIComponent(this.value) + '&quarter={{ quarter }}&lang={{ g.lang }}'"
+           placeholder="{{ _('workshop') }}">
+    <select class="workshop-select" style="max-width: 140px;" onchange="location.href='/export?workshop={{ workshop }}&quarter=' + this.value + '&lang={{ g.lang }}'">
+      {% for q in quarters %}<option value="{{ q }}" {% if q == quarter %}selected{% endif %}>{{ q }}</option>{% endfor %}
+    </select>
+  </div>
+</div>
+
+{% if stats %}
+<div class="stats-bar">
+  <span>{{ _('completion') }}: <span class="stat-num">{{ stats.scored_count }}/{{ stats.total_items }}</span></span>
+  <span>{{ _('score') }}: <span class="stat-num">{{ stats.scored_points }}/{{ stats.total_points }}</span></span>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom: 16px;">
+  <div class="card-title">{{ _('operations') }}</div>
+  <div class="action-bar">
+    <button class="btn btn-outline btn-block" onclick="syncRules()">{{ _('sync_rules') }}</button>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+      <button class="btn btn-primary" onclick="runAutoScore('{{ workshop }}')">{{ _('run_auto_score') }}</button>
+      <button class="btn btn-success" onclick="writeToSheet('{{ workshop }}')">{{ _('write_to_sheet') }}</button>
+    </div>
+  </div>
+</div>
+
+{% if modules %}
+<div class="card" style="margin-bottom: 16px;">
+  <div class="card-title">{{ _('module_breakdown') }}</div>
+  <div style="overflow-x: auto;">
+    <table class="score-table">
+      <thead>
+        <tr>
+          <th>{{ _('module') }}</th>
+          <th>{{ _('items') }}</th>
+          <th>{{ _('score') }}</th>
+          <th>{{ _('rate') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for mod in modules %}
+        {% set item_pct = (mod.scored / mod.total * 100) if mod.total > 0 else 0 %}
+        {% set score_rate = (mod.points / mod.max_points * 100) if mod.max_points > 0 else 0 %}
+        <tr>
+          <td style="font-weight: 600;">{{ mod.name }}</td>
+          <td>
+            <div style="display: flex; align-items: center; gap: 6px; min-width: 120px;">
+              <div class="progress-bar" style="flex: 1;">
+                <div class="progress-fill" style="width: {{ item_pct|int }}%;"></div>
+              </div>
+              <span style="font-family: var(--font-mono); font-size: 0.78rem; font-weight: 500; color: var(--secondary); white-space: nowrap;">{{ mod.scored }}/{{ mod.total }}</span>
+            </div>
+          </td>
+          <td>
+            <span style="font-size: 0.85rem;">{{ mod.points }}</span>
+            <span style="font-size: 0.73rem; color: var(--tertiary);">/{{ mod.max_points }}</span>
+          </td>
+          <td>
+            <span style="font-family: var(--font-mono); font-weight: 600; font-size: 0.85rem;
+              color: {% if score_rate >= 80 %}var(--green){% elif score_rate >= 50 %}var(--orange){% else %}var(--red){% endif %};">
+              {{ score_rate|int }}%
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background: var(--fill);">
+          <td style="font-weight: 700;">{{ _('total') }}</td>
+          <td style="font-weight: 600;">{{ stats.scored_count }}/{{ stats.total_items }}</td>
+          <td style="font-weight: 700;">{{ stats.scored_points }}/{{ stats.total_points }}</td>
+          <td>
+            {% set total_rate = (stats.scored_points / stats.total_points * 100) if stats.total_points > 0 else 0 %}
+            <span style="font-family: var(--font-mono); font-weight: 700; font-size: 0.9rem;">{{ total_rate|int }}%</span>
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">{{ _('no_module_data') }}</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="{{ g.lang }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>TQC Inspection Tool — BYD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=3">
+</head>
+<body>
+  <div class="toast-container" id="toast-container"></div>
+
+  <main class="content">
+    <a href="/?lang={{ g.lang }}" style="display:inline-flex;align-items:center;gap:4px;font-size:0.78rem;color:var(--tertiary);text-decoration:none;margin-bottom:8px;padding:4px 0;">
+      ← {{ _('select_country') }}
+    </a>
+    {% block content %}{% endblock %}
+  </main>
+
+  <nav class="bottom-nav" aria-label="Main navigation" translate="no">
+    <a href="/?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&lang={{ g.lang }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" aria-current="{% if request.endpoint == 'index' %}page{% endif %}">
+      <span class="nav-icon" aria-hidden="true">📋</span>
+      <span class="nav-label">{{ _('checklist') }}</span>
+      {% if nav_pending and nav_pending > 0 %}<span class="nav-badge">{{ nav_pending }}</span>{% endif %}
+    </a>
+    <a href="/review?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&lang={{ g.lang }}" class="nav-link {% if request.endpoint == 'review' %}active{% endif %}" aria-current="{% if request.endpoint == 'review' %}page{% endif %}">
+      <span class="nav-icon" aria-hidden="true">✅</span>
+      <span class="nav-label">{{ _('review') }}</span>
+    </a>
+    <a href="/export?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&lang={{ g.lang }}" class="nav-link {% if request.endpoint == 'export' %}active{% endif %}" aria-current="{% if request.endpoint == 'export' %}page{% endif %}">
+      <span class="nav-icon" aria-hidden="true">📊</span>
+      <span class="nav-label">{{ _('export') }}</span>
+    </a>
+
+    <!-- Language -->
+    <div style="display:flex; gap:4px;">
+      {% for lk, lv in langs.items() %}
+      <a href="javascript:switchLang('{{ lk }}')"
+         style="font-size:0.7rem; padding:3px 7px; border-radius:10px; color:{{ 'var(--blue)' if g.lang == lk else 'var(--tertiary)' }}; text-decoration:none; font-weight:{{ '600' if g.lang == lk else '400' }}; background:{{ 'rgba(0,122,255,0.08)' if g.lang == lk else 'transparent' }};">{{ lv }}</a>
+      {% endfor %}
+    </div>
+  </nav>
+
+  <script src="/static/app.js?v=8"></script>
+
+  <script>
+  function switchLang(lang) {
+    var u = new URL(location.href);
+    u.searchParams.set('lang', lang);
+    location.href = u.toString();
+  }
+  </script>
+</body>
+</html>

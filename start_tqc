@@ -1,0 +1,2 @@
+#!/bin/bash
+cd /Users/xinpengzhang/.claude/tqc && exec ./start.sh

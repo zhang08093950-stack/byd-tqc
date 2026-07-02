@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-header" translate="no">
+  <h1>{{ _('review') }}</h1>
+  <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+    <select class="workshop-select" style="max-width: 120px;" onchange="location.href='/review?country=' + this.value + '&workshop={{ workshop }}&quarter={{ quarter }}&lang={{ g.lang }}'">
+      {% for c in countries %}<option value="{{ c }}" {% if c == country %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <input class="workshop-input" style="max-width: 140px;" value="{{ workshop }}"
+           onchange="location.href='/review?workshop=' + encodeURIComponent(this.value) + '&quarter={{ quarter }}&lang={{ g.lang }}'"
+           placeholder="{{ _('workshop') }}">
+    <select class="workshop-select" style="max-width: 140px;" onchange="location.href='/review?workshop={{ workshop }}&quarter=' + this.value + '&lang={{ g.lang }}'">
+      {% for q in quarters %}<option value="{{ q }}" {% if q == quarter %}selected{% endif %}>{{ q }}</option>{% endfor %}
+    </select>
+  </div>
+</div>
+
+{% set total = auto_count + confirmed_count + manual_count + pending_count %}
+{% set done = confirmed_count + manual_count %}
+<div class="stats-bar">
+  <span>{{ _('reviewed_count') }}: <span class="stat-num">{{ done }}/{{ total }}</span></span>
+  <span>{{ _('auto_count') }}: <span class="stat-num">{{ auto_count }}</span></span>
+  <span>{{ _('pending_count') }}: <span class="stat-num">{{ pending_count }}</span></span>
+</div>
+
+{% if auto_count > 0 %}
+<div class="batch-bar">
+  <span class="text-sm">{{ _('auto_scored_pending', auto_count) }}</span>
+  <button class="btn btn-primary btn-sm" onclick="confirmAll('{{ workshop }}')">{{ _('confirm_all') }}</button>
+</div>
+{% endif %}
+
+<div class="search-bar" id="search-bar">
+  <span class="search-icon">🔍</span>
+  <input type="text" id="search-input" placeholder="{{ _('search_placeholder') }}" oninput="filterCards()">
+  <button class="search-clear" id="search-clear" onclick="clearSearch()">✕</button>
+</div>
+
+<div class="filter-row">
+  <a href="/review?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&lang={{ g.lang }}" class="chip {% if filter == 'all' %}active{% endif %}">{{ _('all') }}</a>
+  <a href="/review?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&filter=auto&lang={{ g.lang }}" class="chip {% if filter == 'auto' %}active{% endif %}">{{ _('auto') }}</a>
+  <a href="/review?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&filter=manual&lang={{ g.lang }}" class="chip {% if filter == 'manual' %}active{% endif %}">{{ _('manual') }}</a>
+  <a href="/review?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&filter=pending&lang={{ g.lang }}" class="chip {% if filter == 'pending' %}active{% endif %}">{{ _('pending') }}</a>
+  <a href="/review?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&filter=confirmed&lang={{ g.lang }}" class="chip {% if filter == 'confirmed' %}active{% endif %}">{{ _('confirmed') }}</a>
+</div>
+
+{% if items %}
+{% for item in items %}
+<a href="/item/{{ item.sn }}?country={{ country }}&workshop={{ workshop }}&ref=review&lang={{ g.lang }}" class="review-card {{ item.status }} stagger-in stagger-{{ loop.index if loop.index <= 10 else 10 }}">
+  <div class="rv-sn">{{ item.sn }}</div>
+  <div class="rv-info">
+    <div class="rv-name">{{ t(item, 'inspection_item') }}</div>
+    <div class="rv-hint">
+      {% if item.status == 'auto' %}
+        {{ _('auto_suggestion') }}: {{ item.auto_score }} {{ _('pts') }}
+        {% if item.auto_reason %}&mdash; {{ item.auto_reason }}{% endif %}
+      {% elif item.status == 'confirmed' %}
+        {{ _('confirmed') }} &mdash; {{ item.score }} {{ _('pts') }}
+      {% elif item.status == 'pending' %}
+        {{ _('pending') }}
+      {% elif item.status == 'manual' %}
+        {{ _('manual') }} &mdash; {{ item.score }} {{ _('pts') }}
+      {% endif %}
+    </div>
+  </div>
+  <div class="rv-score {% if item.score is not none %}has-score{% else %}no-score{% endif %}">
+    {% if item.score is not none %}{{ item.score }}{% else %}-{% endif %}/{{ item.max_score }}
+  </div>
+</a>
+{% endfor %}
+{% else %}
+<div class="empty-state">{{ _('no_matching') }}</div>
+{% endif %}
+
+<script>
+function filterCards() {
+  var q = document.getElementById('search-input').value.trim().toLowerCase();
+  var bar = document.getElementById('search-bar');
+  bar.classList.toggle('has-value', q.length > 0);
+  document.querySelectorAll('.review-card').forEach(function(card) {
+    var sn = (card.querySelector('.rv-sn')?.textContent || '').toLowerCase();
+    var name = (card.querySelector('.rv-name')?.textContent || '').toLowerCase();
+    card.style.display = (!q || sn.includes(q) || name.includes(q)) ? '' : 'none';
+  });
+}
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  filterCards();
+  document.getElementById('search-input').focus();
+}
+</script>
+
+{% endblock %}

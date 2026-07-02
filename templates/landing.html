@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="{{ g.lang }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TQC Inspection — BYD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; height: 100%; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(180deg, #F2F2F7 0%, #E8E8ED 100%);
+      color: #1C1C1E;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .landing {
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+    .logo {
+      width: 48px; height: 48px;
+      background: #1C1C1E;
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      font-size: 1.4rem;
+    }
+    .landing h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin-bottom: 4px;
+      color: #1C1C1E;
+    }
+    .landing .subtitle {
+      font-size: 0.95rem;
+      color: #8E8E93;
+      margin-bottom: 36px;
+      font-weight: 500;
+    }
+    .country-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .country-btn {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 20px;
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 16px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #1C1C1E;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      text-align: left;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .country-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+      border-color: rgba(0,0,0,0.1);
+    }
+    .country-btn:active { transform: scale(0.985); }
+    .country-btn .flag {
+      font-size: 1.8rem;
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      background: #F2F2F7;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .country-btn .info { flex: 1; }
+    .country-btn .name { display: block; font-size: 0.95rem; }
+    .country-btn .db { display: block; font-size: 0.7rem; color: #8E8E93; font-weight: 400; margin-top: 1px; }
+    .country-btn .arrow { color: #C7C7CC; font-size: 1.1rem; font-weight: 300; }
+
+    .lang-row {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+    }
+    .lang-row a {
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.15s;
+      color: #8E8E93;
+      background: transparent;
+    }
+    .lang-row a.active {
+      background: rgba(0,0,0,0.06);
+      color: #1C1C1E;
+    }
+    .lang-row a:hover { color: #1C1C1E; }
+  </style>
+</head>
+<body>
+<div class="landing">
+  <div class="logo">📋</div>
+  <h1>{{ _('tqc_inspection') }}</h1>
+  <p class="subtitle">{{ _('select_country') }}</p>
+
+  <div class="country-list">
+    {% for c in countries %}
+    <a href="/?country={{ c }}&lang={{ g.lang }}" class="country-btn">
+      <span class="flag">
+        {% if c == 'Uruguay' %}🇺🇾{% elif c == 'Paraguay' %}🇵🇾{% else %}🇧🇴{% endif %}
+      </span>
+      <span class="info">
+        <span class="name">{{ c }}</span>
+        <span class="db">{{ c }}.db</span>
+      </span>
+      <span class="arrow">›</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="lang-row">
+    {% for lk, lv in langs.items() %}
+    <a href="javascript:void(0)" onclick="setLang('{{ lk }}')" class="{% if g.lang == lk %}active{% endif %}">{{ lv }}</a>
+    {% endfor %}
+  </div>
+  <script>
+  function setLang(l) { var u = new URL(location.href); u.searchParams.set('lang', l); location.href = u.toString(); }
+  </script>
+</div>
+</body>
+</html>

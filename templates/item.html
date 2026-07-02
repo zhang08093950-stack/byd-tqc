@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a href="/?country={{ country }}&workshop={{ workshop }}&lang={{ g.lang }}" class="back-link">{{ _('back', workshop) }}</a>
+
+<div class="page-header" translate="no">
+  <div class="item-sn-head">{{ rule.sn }}</div>
+  <h1>{{ t(rule, 'inspection_item') }}</h1>
+  <div class="item-meta">
+    {% if rule.inspection_way == 'Online' %}
+    <span class="tag online">{{ _('online') }}</span>
+    {% else %}
+    <span class="tag onsite">{{ _('on_site') }}</span>
+    {% endif %}
+    <span class="text-sm text-muted">{{ t(rule, 'category') }}</span>
+    <span class="text-sm text-muted">{{ _('max_pts', rule.max_score) }}</span>
+    {% if score.confirmed %}
+    <span class="confirmed-badge">{{ _('confirmed') }}</span>
+    {% endif %}
+  </div>
+</div>
+
+{% set std = t(rule, 'inspection_standard') %}
+{% if std %}
+<div class="card page-in">
+  <div class="card-title" translate="no">{{ _('inspection_standard') }}</div>
+  <div class="card-text">{{ std }}</div>
+</div>
+{% endif %}
+
+{% set rating = t(rule, 'rating_explanation') %}
+{% if rating %}
+<div class="card page-in">
+  <div class="card-title" translate="no">{{ _('rating_guide') }}</div>
+  <div class="card-text">{{ rating }}</div>
+</div>
+{% endif %}
+
+<div class="card page-in">
+  <div class="card-title" translate="no">
+    {% if score.auto_score is not none %}{{ _('score') }}{% else %}{{ _('confirm_score') }}{% endif %}
+  </div>
+
+  {% if score.auto_score is not none %}
+  <div class="auto-inline">
+    <div class="auto-inline-val" id="auto-score-val">{{ score.auto_score }}</div>
+    <div class="auto-inline-label">{{ _('auto_suggestion') }}</div>
+    {% if score.auto_reason %}
+    <div class="auto-reason">{{ score.auto_reason }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="score-hero">
+    <input type="number" id="score-input"
+           min="0" max="{{ rule.max_score }}"
+           value="{{ score.score if score.score is not none else (score.auto_score if score.auto_score is not none else '') }}"
+           placeholder="-">
+    <span class="max-hint">{{ _('out_of', rule.max_score) }}</span>
+  </div>
+
+  <div class="form-group" translate="no">
+    <label for="remarks-input">{{ _('remarks') }}</label>
+    <textarea id="remarks-input" class="form-textarea"
+              placeholder="{{ _('optional_notes') }}">{{ score.remarks or '' }}</textarea>
+  </div>
+
+  <button class="btn btn-primary btn-block" translate="no"
+          onclick="confirmScore('{{ rule.sn }}', '{{ workshop }}', this)">
+    {% if score.confirmed %}{{ _('confirmed_tap') }}{% else %}{{ _('confirm_score') }}{% endif %}
+  </button>
+  {% if score.confirmed %}
+  <button class="btn btn-outline btn-block mt-2" translate="no"
+          onclick="unconfirmScore('{{ rule.sn }}', '{{ workshop }}')">
+    Cancel Confirmation
+  </button>
+  {% endif %}
+</div>
+
+<div class="card page-in">
+  <div class="card-title" translate="no">
+    {{ _('evidence') }}
+    {% if evidence %}
+    <span class="evidence-count">{{ evidence|length }}</span>
+    {% endif %}
+  </div>
+
+  {% if evidence %}
+  <div class="evidence-grid">
+    {% for ev in evidence %}
+    <div class="evidence-item">
+      <img src="/api/evidence/{{ ev.id }}/thumb" alt="{{ ev.filename }}" loading="lazy"
+           onclick="openLightbox('/api/evidence/{{ ev.id }}')" style="cursor: pointer;">
+      <button class="ev-delete" onclick="deleteEvidence({{ ev.id }})" aria-label="{{ _('delete_btn') }}">✕</button>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="evidence-empty">
+    <div class="empty-icon">📸</div>
+    <div class="empty-text">{{ _('no_evidence') }}</div>
+  </div>
+  {% endif %}
+
+  <button class="btn btn-outline btn-block mt-2" onclick="uploadEvidence('{{ rule.sn }}', '{{ workshop }}')">
+    {{ _('upload_photo') }}
+  </button>
+</div>
+
+{% if prev_sn or next_sn %}
+<div class="item-nav">
+  {% if prev_sn %}
+  <a href="/item/{{ prev_sn }}?country={{ country }}&workshop={{ workshop }}&ref={{ request.args.get('ref', 'index') }}&lang={{ g.lang }}" class="btn btn-outline js-prev">{{ _('prev') }}</a>
+  {% else %}
+  <span class="btn btn-outline" style="opacity:0.3; pointer-events:none;">{{ _('prev') }}</span>
+  {% endif %}
+  {% if next_sn %}
+  <a href="/item/{{ next_sn }}?country={{ country }}&workshop={{ workshop }}&ref={{ request.args.get('ref', 'index') }}&lang={{ g.lang }}" class="btn btn-outline js-next">{{ _('next') }}</a>
+  {% else %}
+  <span class="btn btn-outline" style="opacity:0.3; pointer-events:none;">{{ _('next') }}</span>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
