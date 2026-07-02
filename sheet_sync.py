@@ -96,7 +96,9 @@ def parse_quarterly_rows(rows, sheet_name=None):
     """
     rules = []
     last_way = ""
+    last_way_zh = ""
     last_module = ""
+    last_module_zh = ""
     last_module_score = ""
     sort_order = 0
 
@@ -105,10 +107,7 @@ def parse_quarterly_rows(rows, sheet_name=None):
         while len(row) < 11:
             row.append("")
 
-        # Helper: extract English part from bilingual cells.
-        # Pattern 1: "线上\n Online"              → take last part
-        # Pattern 2: "中文\n English\n （Cat）"   → skip parenthetical last part
-        # Pattern 3: "服务流程 Service Procedure" → CJK + space + English
+        # Helper: extract English part from bilingual cells (中文\n English)
         def _en(s):
             parts = [(p or "").strip() for p in (s or "").split("\n")]
             parts = [p for p in parts if p]  # drop empties
@@ -118,13 +117,27 @@ def parse_quarterly_rows(rows, sheet_name=None):
             # If result has CJK mixed with ASCII on one line, extract English portion
             cjk = sum(1 for c in result if '一' <= c <= '鿿')
             if cjk > 0 and len(result) > cjk:
-                # Split by CJK runs and keep ASCII-dominant segments
                 import re as _re
                 segments = _re.split(r'[一-鿿]+', result)
                 en = ' '.join(s.strip() for s in segments if s.strip())
                 if en:
                     return en
             return result
+
+        # Helper: extract Chinese part from bilingual cells (中文\n English)
+        def _zh(s):
+            parts = [(p or "").strip() for p in (s or "").split("\n")]
+            parts = [p for p in parts if p]  # drop empties
+            if not parts:
+                return ""
+            # First non-parenthetical part is usually Chinese
+            for p in parts:
+                if p.startswith("（"):
+                    continue
+                cjk = sum(1 for c in p if '一' <= c <= '鿿')
+                if cjk > 0:
+                    return p
+            return parts[0]  # fallback
 
         # Helper: extract English-only paragraphs from bilingual long text.
         # Handles two patterns:
@@ -164,20 +177,55 @@ def parse_quarterly_rows(rows, sheet_name=None):
                 en_lines.pop()
             return "\n".join(en_lines)
 
+        # Helper: extract Chinese-only paragraphs from bilingual long text.
+        # Mirror of _extract_en — keeps lines with >15% CJK characters.
+        def _extract_zh(text):
+            if not text:
+                return ""
+            lines = text.split("\n")
+            zh_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    if zh_lines and zh_lines[-1] != "":
+                        zh_lines.append("")
+                    continue
+                cjk = sum(1 for c in stripped
+                          if ('一' <= c <= '鿿' or '㐀' <= c <= '䶿' or
+                              '豈' <= c <= '﫿' or '぀' <= c <= 'ヿ'))
+                total = sum(1 for c in stripped if not c.isspace())
+                if total == 0:
+                    continue
+                if cjk / total > 0.15:
+                    zh_lines.append(stripped)
+            while zh_lines and zh_lines[0] == "":
+                zh_lines.pop(0)
+            while zh_lines and zh_lines[-1] == "":
+                zh_lines.pop()
+            return "\n".join(zh_lines)
+
         way = _en(row[0])
+        way_zh = _zh(row[0])
         module = _en(row[1])
+        module_zh = _zh(row[1])
         module_score = _en(row[2])
         sn = _en(row[3])
         item_name = _en(row[4])
+        item_name_zh = _zh(row[4])
         specs = _extract_en(row[5] or "")
+        specs_zh = _extract_zh(row[5] or "")
         rating_explanation = _extract_en(row[6] or "")
         full_score = (row[7] or "").strip()
 
         # --- carry-down for merged cells ---
         if way:
             last_way = way
+        if way_zh:
+            last_way_zh = way_zh
         if module:
             last_module = module
+        if module_zh:
+            last_module_zh = module_zh
         if module_score:
             last_module_score = module_score
 
@@ -202,9 +250,13 @@ def parse_quarterly_rows(rows, sheet_name=None):
         rules.append({
             "sn": sn,
             "category": last_module,
+            "category_zh": last_module_zh,
             "inspection_item": item_name,
+            "inspection_item_zh": item_name_zh,
             "inspection_way": last_way,
+            "inspection_way_zh": last_way_zh,
             "inspection_standard": inspection_standard,
+            "inspection_standard_zh": specs_zh,
             "rating_explanation": rating_explanation,
             "max_score": max_score,
             "sort_order": sort_order,
@@ -252,9 +304,13 @@ def sync_rules_to_db(quarter=None):
                     """
                     UPDATE tqc__rules SET
                         category = ?,
+                        category_zh = ?,
                         inspection_item = ?,
+                        inspection_item_zh = ?,
                         inspection_way = ?,
+                        inspection_way_zh = ?,
                         inspection_standard = ?,
+                        inspection_standard_zh = ?,
                         rating_explanation = ?,
                         max_score = ?,
                         sort_order = ?,
@@ -263,9 +319,13 @@ def sync_rules_to_db(quarter=None):
                     """,
                     (
                         rule["category"],
+                        rule.get("category_zh", ""),
                         rule["inspection_item"],
+                        rule.get("inspection_item_zh", ""),
                         rule["inspection_way"],
+                        rule.get("inspection_way_zh", ""),
                         rule["inspection_standard"],
+                        rule.get("inspection_standard_zh", ""),
                         rule.get("rating_explanation", ""),
                         rule["max_score"],
                         rule["sort_order"],
@@ -278,17 +338,23 @@ def sync_rules_to_db(quarter=None):
                 conn.execute(
                     """
                     INSERT INTO tqc__rules
-                        (sn, category, inspection_item, inspection_way,
-                         inspection_standard, rating_explanation,
+                        (sn, category, category_zh, inspection_item, inspection_item_zh,
+                         inspection_way, inspection_way_zh,
+                         inspection_standard, inspection_standard_zh,
+                         rating_explanation,
                          max_score, sort_order, sheet_name)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         rule["sn"],
                         rule["category"],
+                        rule.get("category_zh", ""),
                         rule["inspection_item"],
+                        rule.get("inspection_item_zh", ""),
                         rule["inspection_way"],
+                        rule.get("inspection_way_zh", ""),
                         rule["inspection_standard"],
+                        rule.get("inspection_standard_zh", ""),
                         rule.get("rating_explanation", ""),
                         rule["max_score"],
                         rule["sort_order"],

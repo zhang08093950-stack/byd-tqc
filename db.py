@@ -50,7 +50,9 @@ def init_db():
             inspection_item_zh TEXT,
             inspection_item_es TEXT,
             inspection_way   TEXT NOT NULL,
+            inspection_way_zh TEXT,
             inspection_standard TEXT,
+            inspection_standard_zh TEXT,
             rating_explanation TEXT,
             max_score     INTEGER DEFAULT 100,
             sort_order    INTEGER DEFAULT 0,
@@ -104,6 +106,8 @@ def init_db():
         for col in [
             "category_zh TEXT", "category_es TEXT",
             "inspection_item_zh TEXT", "inspection_item_es TEXT",
+            "inspection_way_zh TEXT",
+            "inspection_standard_zh TEXT",
             "rating_explanation TEXT",
         ]:
             try:
