@@ -114,9 +114,36 @@ def init_db():
                 conn.execute(f"ALTER TABLE tqc__rules ADD COLUMN {col}")
             except sqlite3.OperationalError:
                 pass  # column already exists
+
+        # Import seed data if rules table is empty
+        count = conn.execute("SELECT COUNT(*) FROM tqc__rules").fetchone()[0]
+        if count == 0:
+            _import_seed(conn)
+
         conn.commit()
     finally:
         conn.close()
+
+
+def _import_seed(conn):
+    """Import seed rules from seed_rules.json if available."""
+    import json, os, sys
+    seed_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'seed_rules.json')
+    if not os.path.exists(seed_path):
+        print(f"[seed] No seed file at {seed_path}", file=sys.stderr)
+        return
+    with open(seed_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    cols = data['columns']
+    placeholders = ','.join(['?'] * len(cols))
+    col_names = ','.join(cols)
+    for row in data['rows']:
+        vals = [row[c] for c in cols]
+        conn.execute(
+            f"INSERT OR IGNORE INTO tqc__rules ({col_names}) VALUES ({placeholders})",
+            vals
+        )
+    print(f"[seed] Imported {len(data['rows'])} rules", file=sys.stderr)
 
 
 def _quarter_sheet(quarter):
