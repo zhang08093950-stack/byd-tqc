@@ -527,10 +527,19 @@ def api_write_scores():
 @app.route("/api/db")
 def api_db():
     import os, sqlite3
-    from db import get_db_path
+    from db import get_db_path, rules_by_way, _quarter_sheet
     p = get_db_path()
     c = sqlite3.connect(p).execute("SELECT COUNT(*) FROM tqc__rules").fetchone()[0]
-    return {"db_path": p, "rules": c, "TQC_DATA_DIR": os.environ.get("TQC_DATA_DIR", "NONE")}
+    q = _quarter_sheet("2026 Q2")
+    online = rules_by_way("Online", "2026 Q2")
+    onsite = rules_by_way("On-site", "2026 Q2")
+    return {
+        "db_path": p, "rules": c, "TQC_DATA_DIR": os.environ.get("TQC_DATA_DIR", "NONE"),
+        "quarter_sheet": q,
+        "online_count": len(online),
+        "onsite_count": len(onsite),
+        "sample_online": online[0] if online else None,
+    }
 
 # ---------------------------------------------------------------------------
 # Main
