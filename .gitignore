@@ -2,7 +2,9 @@ __pycache__/
 *.pyc
 *.pyo
 data/*.db
+data/*.db-*
 data/*.pickle
 *.log
+launchd.*
 .DS_Store
 .env
