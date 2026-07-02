@@ -473,15 +473,18 @@ def api_write_scores():
         return jsonify({"error": str(e)}), 500
 
 
-# ---------------------------------------------------------------------------
-# Startup — init DB inside THIS process (gunicorn or flask run)
-# ---------------------------------------------------------------------------
-init_db()
+@app.route("/api/db")
+def api_db():
+    import os
+    from db import get_db_path
+    p = get_db_path()
+    return {"db_path": p, "TQC_DATA_DIR": os.environ.get("TQC_DATA_DIR", "NONE")}
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    init_db()
     print("Starting TQC server on http://localhost:8789", flush=True)
     app.run(host="0.0.0.0", port=8789, debug=True)
