@@ -524,6 +524,14 @@ def api_write_scores():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/db")
+def api_db():
+    import os, sqlite3
+    from db import get_db_path
+    p = get_db_path()
+    c = sqlite3.connect(p).execute("SELECT COUNT(*) FROM tqc__rules").fetchone()[0]
+    return {"db_path": p, "rules": c, "TQC_DATA_DIR": os.environ.get("TQC_DATA_DIR", "NONE")}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
