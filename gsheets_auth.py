@@ -13,7 +13,6 @@ socket.getaddrinfo = _ipv4_getaddrinfo
 
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 SCOPES = [
@@ -74,6 +73,7 @@ def get_service():
         return build("sheets", "v4", credentials=creds, cache_discovery=False)
 
     # Fallback: OAuth user consent
+    from google_auth_oauthlib.flow import InstalledAppFlow
     creds = None
     if os.path.exists(TOKEN_PATH):
         with open(TOKEN_PATH, "rb") as f:
