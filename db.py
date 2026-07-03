@@ -60,7 +60,10 @@ def init_db():
             inspection_way_zh TEXT,
             inspection_standard TEXT,
             inspection_standard_zh TEXT,
+            inspection_standard_es TEXT,
             rating_explanation TEXT,
+            rating_explanation_zh TEXT,
+            rating_explanation_es TEXT,
             max_score     INTEGER DEFAULT 100,
             sort_order    INTEGER DEFAULT 0,
             sheet_name    TEXT NOT NULL,
@@ -114,8 +117,8 @@ def init_db():
             "category_zh TEXT", "category_es TEXT",
             "inspection_item_zh TEXT", "inspection_item_es TEXT",
             "inspection_way_zh TEXT",
-            "inspection_standard_zh TEXT",
-            "rating_explanation TEXT",
+            "inspection_standard_zh TEXT", "inspection_standard_es TEXT",
+            "rating_explanation TEXT", "rating_explanation_zh TEXT", "rating_explanation_es TEXT",
         ]:
             try:
                 conn.execute(f"ALTER TABLE tqc__rules ADD COLUMN {col}")
