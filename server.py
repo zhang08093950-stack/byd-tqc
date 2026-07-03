@@ -19,11 +19,10 @@ Routes:
 
 from flask import Flask, render_template, request, jsonify, send_file, g
 from io import BytesIO
-# deploy trigger
 
 from db import (
     init_db, all_rules, rules_by_way, scores_for_workshop,
-    upsert_score, get_evidence, get_evidence_data, progress_stats, get_conn, get_db_path,
+    upsert_score, get_evidence, get_evidence_data, progress_stats, get_conn,
 )
 from rule_engine import run_auto_scoring
 from evidence_store import save_evidence, delete_evidence
@@ -119,20 +118,8 @@ def index():
     workshop = _validate_workshop(request.args.get("workshop"))
     quarter = _get_quarter()
 
-    import sys, sqlite3 as _sql
-    _dbp = get_db_path()
-    _conn = _sql.connect(_dbp)
-    _conn.row_factory = _sql.Row
-    _sheet = f"{quarter} Quarterly TQC"
-    _raw = _conn.execute("SELECT COUNT(*) FROM tqc__rules WHERE sheet_name=?", (_sheet,)).fetchone()[0]
-    _raw_on = _conn.execute("SELECT COUNT(*) FROM tqc__rules WHERE inspection_way='Online' AND sheet_name=?", (_sheet,)).fetchone()[0]
-    _raw_site = _conn.execute("SELECT COUNT(*) FROM tqc__rules WHERE inspection_way='On-site' AND sheet_name=?", (_sheet,)).fetchone()[0]
-    _conn.close()
     online_rules = rules_by_way("Online", quarter)
     onsite_rules = rules_by_way("On-site", quarter)
-    print(f"[index] quarter={quarter} sheet={_sheet} db={_dbp}", file=sys.stderr, flush=True)
-    print(f"[index] RAW: total={_raw} online={_raw_on} onsite={_raw_site}", file=sys.stderr, flush=True)
-    print(f"[index] FUNC: online={len(online_rules)} onsite={len(onsite_rules)}", file=sys.stderr, flush=True)
     scores = scores_for_workshop(workshop)
 
     # Merge scores into rules (look up by SN)
@@ -555,12 +542,9 @@ def api_db():
     }
 
 # ---------------------------------------------------------------------------
-# Startup — run once when module loads (gunicorn imports this)
+# Startup — initialize database when module loads
 # ---------------------------------------------------------------------------
-import sys as _sys
-print(">>> server.py loading, calling init_db()...", file=_sys.stderr, flush=True)
 init_db()
-print(">>> init_db() done", file=_sys.stderr, flush=True)
 
 # ---------------------------------------------------------------------------
 # Main

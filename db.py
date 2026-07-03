@@ -23,14 +23,10 @@ COUNTRY_DB = {
 
 def get_db_path():
     """Return the current database path based on the active country."""
-    import sys
     try:
-        path = g.get("db_path", DEFAULT_DB)
+        return g.get("db_path", DEFAULT_DB)
     except RuntimeError:
-        path = DEFAULT_DB
-    # DEBUG
-    print(f"[get_db_path] g.db_path={path}  DEFAULT_DB={DEFAULT_DB}", file=sys.stderr, flush=True)
-    return path
+        return DEFAULT_DB
 
 
 def get_conn():
