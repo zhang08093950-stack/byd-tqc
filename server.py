@@ -69,7 +69,7 @@ def inject_nav_counts():
         conn = get_conn()
         pending = conn.execute(
             "SELECT COUNT(*) FROM tqc__rules r WHERE NOT EXISTS "
-            "(SELECT 1 FROM tqc__scores s WHERE s.sn = r.sn AND s.score IS NOT NULL)"
+            "(SELECT 1 FROM tqc__scores s WHERE s.rule_sn = r.sn AND s.score IS NOT NULL)"
         ).fetchone()[0]
         conn.close()
     except Exception:

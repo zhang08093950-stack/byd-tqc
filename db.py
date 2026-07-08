@@ -37,9 +37,10 @@ def get_conn():
     return conn
 
 
-def init_db():
-    """Create the 4 TQC tables if they don't already exist. Set WAL mode."""
-    conn = get_conn()
+def _init_one_db(db_path):
+    """Create tables and run migrations on a single database file."""
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript("""
@@ -129,6 +130,15 @@ def init_db():
         conn.commit()
     finally:
         conn.close()
+
+
+def init_db():
+    """Create tables and run migrations on ALL country databases."""
+    # Ensure data directory exists (critical on Render fresh deploys)
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+    for country, db_path in COUNTRY_DB.items():
+        _init_one_db(db_path)
 
 
 def _import_seed(conn):
