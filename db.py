@@ -14,11 +14,25 @@ from flask import g
 _BASE = "/opt/render/project/src" if os.path.exists("/opt/render/project/src") else os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(_BASE, "data")
 DEFAULT_DB = os.path.join(DATA_DIR, "uruguay.db")
-COUNTRY_DB = {
-    "Uruguay":  os.path.join(DATA_DIR, "uruguay.db"),
-    "Paraguay": os.path.join(DATA_DIR, "Paraguay.db"),
-    "Bolivia":  os.path.join(DATA_DIR, "Bolivia.db"),
-}
+def _resolve_country_db():
+    """Resolve country DB paths. Prefer external drive on local dev, fall back to data/ on Render."""
+    ext_base = "/Volumes/PS2000/BYD"
+    db_map = {
+        "Uruguay":  ("Uruguay", "uruguay.db"),
+        "Paraguay": ("Paraguay", "paraguay.db"),
+        "Bolivia":  ("Bolivia", "bolivia.db"),
+    }
+    result = {}
+    for country, (folder, filename) in db_map.items():
+        ext_path = os.path.join(ext_base, folder, filename)
+        if os.path.exists(ext_path):
+            result[country] = ext_path
+        else:
+            result[country] = os.path.join(DATA_DIR, f"{country}.db")
+    return result
+
+
+COUNTRY_DB = _resolve_country_db()
 
 
 def get_db_path():
