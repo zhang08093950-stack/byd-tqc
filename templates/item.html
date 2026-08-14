@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 
-<a href="/?country={{ country }}&workshop={{ workshop }}&lang={{ g.lang }}" class="back-link">{{ _('back', workshop) }}</a>
+<a href="/?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&lang={{ g.lang }}" class="back-link">{{ _('back', workshop) }}</a>
 
 <div class="page-header" translate="no">
   <div class="item-sn-head">{{ rule.sn }}</div>
@@ -66,13 +66,15 @@
   </div>
 
   <button class="btn btn-primary btn-block" translate="no"
-          onclick="confirmScore('{{ rule.sn }}', '{{ workshop }}', this)">
+          data-sn="{{ rule.sn }}" data-workshop="{{ workshop }}"
+          onclick="confirmScore(this.dataset.sn, this.dataset.workshop, this)">
     {% if score.confirmed %}{{ _('confirmed_tap') }}{% else %}{{ _('confirm_score') }}{% endif %}
   </button>
   {% if score.confirmed %}
   <button class="btn btn-outline btn-block mt-2" translate="no"
-          onclick="unconfirmScore('{{ rule.sn }}', '{{ workshop }}')">
-    Cancel Confirmation
+          data-sn="{{ rule.sn }}" data-workshop="{{ workshop }}"
+          onclick="unconfirmScore(this.dataset.sn, this.dataset.workshop)">
+    {{ _('cancel_confirmation_btn') }}
   </button>
   {% endif %}
 </div>
@@ -102,7 +104,9 @@
   </div>
   {% endif %}
 
-  <button class="btn btn-outline btn-block mt-2" onclick="uploadEvidence('{{ rule.sn }}', '{{ workshop }}')">
+  <button class="btn btn-outline btn-block mt-2"
+          data-sn="{{ rule.sn }}" data-workshop="{{ workshop }}"
+          onclick="uploadEvidence(this.dataset.sn, this.dataset.workshop)">
     {{ _('upload_photo') }}
   </button>
 </div>
@@ -110,12 +114,12 @@
 {% if prev_sn or next_sn %}
 <div class="item-nav">
   {% if prev_sn %}
-  <a href="/item/{{ prev_sn }}?country={{ country }}&workshop={{ workshop }}&ref={{ request.args.get('ref', 'index') }}&lang={{ g.lang }}" class="btn btn-outline js-prev">{{ _('prev') }}</a>
+  <a href="/item/{{ prev_sn }}?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&ref={{ request.args.get('ref', 'index') }}&lang={{ g.lang }}" class="btn btn-outline js-prev">{{ _('prev') }}</a>
   {% else %}
   <span class="btn btn-outline" style="opacity:0.3; pointer-events:none;">{{ _('prev') }}</span>
   {% endif %}
   {% if next_sn %}
-  <a href="/item/{{ next_sn }}?country={{ country }}&workshop={{ workshop }}&ref={{ request.args.get('ref', 'index') }}&lang={{ g.lang }}" class="btn btn-outline js-next">{{ _('next') }}</a>
+  <a href="/item/{{ next_sn }}?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&ref={{ request.args.get('ref', 'index') }}&lang={{ g.lang }}" class="btn btn-outline js-next">{{ _('next') }}</a>
   {% else %}
   <span class="btn btn-outline" style="opacity:0.3; pointer-events:none;">{{ _('next') }}</span>
   {% endif %}

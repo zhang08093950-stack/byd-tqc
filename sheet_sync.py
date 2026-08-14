@@ -27,6 +27,20 @@ SHEET_ID = "1bQYHd5T5yf0g5ILF6aUGmddl-nTKXRwFuotnO-PEYEw"
 QUARTERLY_SHEET = "2026 Q2 Quarterly TQC"
 MONTHLY_SHEET = "2026 Q2 Monthly TQC"
 
+# Per-country spreadsheet overrides.  Only countries listed here use their
+# own spreadsheet; everything else falls back to SHEET_ID.  Add a country's
+# spreadsheet ID here once it exists (or set TQC_SHEET_ID_<COUNTRY> env var).
+def _sheet_id(country=None):
+    if not country:
+        return SHEET_ID
+    env_id = os.environ.get(f"TQC_SHEET_ID_{country.upper().replace(' ', '_')}")
+    if env_id:
+        return env_id
+    return {
+        # "Paraguay": "<spreadsheet-id>",
+        # "Bolivia":  "<spreadsheet-id>",
+    }.get(country, SHEET_ID)
+
 # ---------------------------------------------------------------------------
 # Singleton service
 # ---------------------------------------------------------------------------
@@ -45,7 +59,7 @@ def get_gs_service():
 # Sheet I/O
 # ---------------------------------------------------------------------------
 
-def read_sheet(sheet_name, range_spec=None):
+def read_sheet(sheet_name, range_spec=None, spreadsheet_id=None):
     """Read a sheet range.  Returns a list of row lists (each row is list of str).
 
     Parameters
@@ -55,11 +69,14 @@ def read_sheet(sheet_name, range_spec=None):
     range_spec : str | None
         Optional A1 range within the sheet (e.g. "A1:K200").  When omitted the
         entire used range of the sheet is returned.
+    spreadsheet_id : str | None
+        Spreadsheet to read from; defaults to SHEET_ID.
     """
     service = get_gs_service()
+    sid = spreadsheet_id or SHEET_ID
     range_name = sheet_name if range_spec is None else f"{sheet_name}!{range_spec}"
     try:
-        return _read_sheet_base(service, SHEET_ID, range_name)
+        return _read_sheet_base(service, sid, range_name)
     except Exception as e:
         rng = range_spec or "all"
         raise RuntimeError(
@@ -270,16 +287,17 @@ def parse_quarterly_rows(rows, sheet_name=None):
 # Import -- rules into tqc__rules
 # ---------------------------------------------------------------------------
 
-def sync_rules_to_db(quarter=None):
+def sync_rules_to_db(quarter=None, country=None):
     """Read the quarterly sheet, parse rows, and upsert into **tqc__rules**.
 
     If *quarter* is given (e.g. '2026 Q2'), reads that quarter's sheet.
-    Otherwise uses the default QUARTERLY_SHEET.
+    Otherwise uses the default QUARTERLY_SHEET.  *country* selects the
+    spreadsheet when a per-country one is configured.
     """
     import db  # same-directory module
 
     sheet = f"{quarter} Quarterly TQC" if quarter else QUARTERLY_SHEET
-    rows = read_sheet(sheet)
+    rows = read_sheet(sheet, spreadsheet_id=_sheet_id(country))
     rules = parse_quarterly_rows(rows, sheet)
 
     if not rules:
@@ -373,8 +391,11 @@ def sync_rules_to_db(quarter=None):
 # Export -- scores back to the sheet
 # ---------------------------------------------------------------------------
 
-def write_scores_to_sheet(workshop):
+def write_scores_to_sheet(workshop, quarter=None, country=None):
     """Write confirmed scores back to column I (实际得分) in the quarterly sheet.
+
+    Uses the sheet matching *quarter* (defaults to QUARTERLY_SHEET when not
+    given) and the spreadsheet matching *country* (defaults to SHEET_ID).
 
     Steps
     -----
@@ -387,11 +408,18 @@ def write_scores_to_sheet(workshop):
     workshop : str
         Workshop name (e.g. "Montevideo") matching the *workshop* column in
         ``tqc__scores``.
+    quarter : str | None
+        Quarter string like '2026 Q2'; selects which sheet tab to write to.
+    country : str | None
+        Country name; selects the spreadsheet when a per-country one exists.
     """
     import db
 
+    sheet = f"{quarter} Quarterly TQC" if quarter else QUARTERLY_SHEET
+    sid = _sheet_id(country)
+
     # 1.  Read sheet, map SN → 1-indexed row number
-    rows = read_sheet(QUARTERLY_SHEET)
+    rows = read_sheet(sheet, spreadsheet_id=sid)
     sn_to_row = {}
     for i, row in enumerate(rows):
         if len(row) > 3:
@@ -400,7 +428,7 @@ def write_scores_to_sheet(workshop):
                 sn_to_row[sn] = i + 1  # Sheets API rows are 1-indexed
 
     # 2.  Query confirmed scores
-    all_scores = db.scores_for_workshop(workshop)
+    all_scores = db.scores_for_workshop(workshop, quarter)
     confirmed = {
         sn: s
         for sn, s in all_scores.items()
@@ -423,7 +451,7 @@ def write_scores_to_sheet(workshop):
             continue
 
         data.append({
-            "range": f"{QUARTERLY_SHEET}!I{row_num}",
+            "range": f"{sheet}!I{row_num}",
             "values": [[sd["score"]]],
         })
 
@@ -437,7 +465,7 @@ def write_scores_to_sheet(workshop):
     }
     try:
         service.spreadsheets().values().batchUpdate(
-            spreadsheetId=SHEET_ID, body=body
+            spreadsheetId=sid, body=body
         ).execute()
     except Exception as e:
         raise RuntimeError(
@@ -445,5 +473,6 @@ def write_scores_to_sheet(workshop):
         ) from e
 
     print(
-        f"Scores written: {len(data)} rows updated for workshop '{workshop}'."
+        f"Scores written: {len(data)} rows updated for workshop '{workshop}' "
+        f"(sheet '{sheet}')."
     )

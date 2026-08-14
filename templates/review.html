@@ -4,13 +4,13 @@
 <div class="page-header" translate="no">
   <h1>{{ _('review') }}</h1>
   <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
-    <select class="workshop-select" style="max-width: 120px;" onchange="location.href='/review?country=' + this.value + '&workshop={{ workshop }}&quarter={{ quarter }}&lang={{ g.lang }}'">
+    <select class="workshop-select" style="max-width: 120px;" onchange="navigateWith({country: this.value})">
       {% for c in countries %}<option value="{{ c }}" {% if c == country %}selected{% endif %}>{{ c }}</option>{% endfor %}
     </select>
     <input class="workshop-input" style="max-width: 140px;" value="{{ workshop }}"
-           onchange="location.href='/review?workshop=' + encodeURIComponent(this.value) + '&quarter={{ quarter }}&lang={{ g.lang }}'"
+           onchange="navigateWith({workshop: this.value})"
            placeholder="{{ _('workshop') }}">
-    <select class="workshop-select" style="max-width: 140px;" onchange="location.href='/review?workshop={{ workshop }}&quarter=' + this.value + '&lang={{ g.lang }}'">
+    <select class="workshop-select" style="max-width: 140px;" onchange="navigateWith({quarter: this.value})">
       {% for q in quarters %}<option value="{{ q }}" {% if q == quarter %}selected{% endif %}>{{ q }}</option>{% endfor %}
     </select>
   </div>
@@ -27,7 +27,7 @@
 {% if auto_count > 0 %}
 <div class="batch-bar">
   <span class="text-sm">{{ _('auto_scored_pending', auto_count) }}</span>
-  <button class="btn btn-primary btn-sm" onclick="confirmAll('{{ workshop }}')">{{ _('confirm_all') }}</button>
+  <button class="btn btn-primary btn-sm" data-workshop="{{ workshop }}" onclick="confirmAll(this.dataset.workshop)">{{ _('confirm_all') }}</button>
 </div>
 {% endif %}
 
@@ -47,7 +47,7 @@
 
 {% if items %}
 {% for item in items %}
-<a href="/item/{{ item.sn }}?country={{ country }}&workshop={{ workshop }}&ref=review&lang={{ g.lang }}" class="review-card {{ item.status }} stagger-in stagger-{{ loop.index if loop.index <= 10 else 10 }}">
+<a href="/item/{{ item.sn }}?country={{ country }}&workshop={{ workshop }}&quarter={{ quarter }}&ref=review&lang={{ g.lang }}" class="review-card {{ item.status }} stagger-in stagger-{{ loop.index if loop.index <= 10 else 10 }}">
   <div class="rv-sn">{{ item.sn }}</div>
   <div class="rv-info">
     <div class="rv-name">{{ t(item, 'inspection_item') }}</div>

@@ -1,16 +1,14 @@
 """
-tqc/rule_engine — Auto-score computable inspection items from uruguay.db data.
+tqc/rule_engine — Auto-score computable inspection items from country data.
 
 Parses scoring rules and auto-scores computable inspection items by querying
-existing data in uruguay.db.  Uses sqlite3 directly (not the db module's
-connection helper) to keep this module importable without side effects.
+existing data in the *active country* database (via db.get_conn(), which is
+scoped to the current request's country).  Uses sqlite3 directly (not the db
+module's connection helper) only for the optional caller-supplied connection.
 """
 
-import os
 import re
 import sqlite3
-
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "uruguay.db")
 
 # ---------------------------------------------------------------------------
 # Threshold parsing
@@ -114,8 +112,8 @@ def auto_score_item(sn: str, rules_dict: dict, conn: "sqlite3.Connection | None"
 
     own_conn = conn is None
     if own_conn:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
+        from db import get_conn
+        conn = get_conn()  # active country's database
     try:
         # ---- A-1-4  or  name contains "技术问诊" ----
         if sn == "A-1-4" or "技术问诊" in item_name:
@@ -219,30 +217,35 @@ def auto_score_item(sn: str, rules_dict: dict, conn: "sqlite3.Connection | None"
 # Batch run
 # ---------------------------------------------------------------------------
 
-def run_auto_scoring(workshop: str) -> int:
+def run_auto_scoring(workshop: str, quarter: "str | None" = None) -> int:
     """Run auto_score_item for ALL rules and persist results via db.upsert_score().
 
     Only sets ``auto_score`` (and ``score`` for convenience); leaves
     ``confirmed`` = 0 so that human review is still required.
 
-    Opens a single database connection and reuses it for all items
-    (avoids N+1 connections).
+    Uses the *active country's* database (request-scoped) for both the
+    source data tables and the score writes, and scopes rules/scores to
+    *quarter* when given.  Per-item failures are recorded as reasons
+    instead of aborting the whole run.
 
     Returns the number of items that were auto-scored (score not None).
     """
     # Late import to avoid circular dependency at module level.
-    from db import all_rules, upsert_score
+    from db import all_rules, upsert_score, get_conn, _quarter_sheet
 
-    rules = all_rules()
+    rules = all_rules(quarter)
     rules_dict = {r["sn"]: r for r in rules}
+    sheet = _quarter_sheet(quarter) if quarter else None
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = get_conn()  # active country's database (row_factory=Row)
     try:
         count = 0
         for rule in rules:
             sn = rule["sn"]
-            score, reason = auto_score_item(sn, rules_dict, conn=conn)
+            try:
+                score, reason = auto_score_item(sn, rules_dict, conn=conn)
+            except Exception as e:
+                score, reason = None, f"auto-score error: {e}"
             if score is not None:
                 upsert_score(
                     rule_sn=sn,
@@ -253,6 +256,7 @@ def run_auto_scoring(workshop: str) -> int:
                     auto_reason=reason,
                     confirmed=0,
                     remarks=None,
+                    sheet_name=sheet,
                 )
                 count += 1
 

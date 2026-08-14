@@ -11,7 +11,7 @@ import json
 
 from PIL import Image
 
-from db import get_conn
+from db import get_conn, _quarter_sheet
 
 MAX_SIZE = 2 * 1024 * 1024   # 2 MB
 THUMB_SIZE = (200, 200)
@@ -116,21 +116,34 @@ def save_evidence(rule_sn, workshop, filename, data, mime_type, quarter=None):
         )
         evidence_id = cursor.lastrowid
 
+        # Resolve the sheet_name for the score row (evidence belongs to a
+        # quarter, scores are unique per rule_sn + workshop + sheet_name).
+        sheet = _quarter_sheet(quarter) if quarter else None
+
         # Append the new ID to the JSON array in tqc__scores
-        row = conn.execute(
-            "SELECT evidence_ids FROM tqc__scores WHERE rule_sn = ? AND workshop = ?",
-            (rule_sn, workshop),
-        ).fetchone()
+        row = None
+        if sheet is not None:
+            row = conn.execute(
+                "SELECT evidence_ids FROM tqc__scores "
+                "WHERE rule_sn = ? AND workshop = ? AND sheet_name = ?",
+                (rule_sn, workshop, sheet),
+            ).fetchone()
+        if row is None:
+            row = conn.execute(
+                "SELECT evidence_ids FROM tqc__scores "
+                "WHERE rule_sn = ? AND workshop = ? AND sheet_name IS NULL",
+                (rule_sn, workshop),
+            ).fetchone()
 
         ids = json.loads(row["evidence_ids"]) if row and row["evidence_ids"] else []
         ids.append(evidence_id)
 
         conn.execute(
-            """INSERT INTO tqc__scores (rule_sn, workshop, evidence_ids)
-               VALUES (?, ?, ?)
-               ON CONFLICT(rule_sn, workshop) DO UPDATE SET
+            """INSERT INTO tqc__scores (rule_sn, workshop, sheet_name, evidence_ids)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(rule_sn, workshop, sheet_name) DO UPDATE SET
                    evidence_ids = excluded.evidence_ids""",
-            (rule_sn, workshop, json.dumps(ids)),
+            (rule_sn, workshop, sheet, json.dumps(ids)),
         )
 
         conn.commit()

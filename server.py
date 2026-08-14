@@ -23,6 +23,7 @@ from io import BytesIO
 from db import (
     init_db, all_rules, rules_by_way, scores_for_workshop,
     upsert_score, get_evidence, get_evidence_data, progress_stats, get_conn,
+    _quarter_sheet,
 )
 from rule_engine import run_auto_scoring
 from evidence_store import save_evidence, delete_evidence
@@ -51,7 +52,12 @@ def _(key, *args):
 
 @app.before_request
 def set_country_db():
-    country = request.args.get("country", "Uruguay")
+    country = request.args.get("country")
+    if not country and request.method == "POST" and request.is_json:
+        try:
+            country = (request.get_json(silent=True) or {}).get("country")
+        except Exception:
+            country = None
     if country not in COUNTRY_DB:
         country = "Uruguay"
     g.db_path = COUNTRY_DB.get(country, DEFAULT_DB)
@@ -63,14 +69,27 @@ def set_country_db():
 
 @app.context_processor
 def inject_nav_counts():
-    """Provide pending counts and translation helper for templates."""
+    """Provide pending counts, translation helper and JS i18n for templates."""
     pending = 0
+    quarter = request.args.get("quarter")
+    sheet = _quarter_sheet(quarter) if quarter in QUARTERS else _quarter_sheet(_get_quarter())
+    workshop = request.args.get("workshop") or ""
     try:
         conn = get_conn()
-        pending = conn.execute(
-            "SELECT COUNT(*) FROM tqc__rules r WHERE NOT EXISTS "
-            "(SELECT 1 FROM tqc__scores s WHERE s.rule_sn = r.sn AND s.score IS NOT NULL)"
-        ).fetchone()[0]
+        if workshop:
+            pending = conn.execute(
+                "SELECT COUNT(*) FROM tqc__rules r WHERE r.sheet_name = ? "
+                "AND NOT EXISTS (SELECT 1 FROM tqc__scores s "
+                "WHERE s.rule_sn = r.sn AND s.workshop = ? AND s.score IS NOT NULL)",
+                (sheet, workshop)
+            ).fetchone()[0]
+        else:
+            pending = conn.execute(
+                "SELECT COUNT(*) FROM tqc__rules r WHERE r.sheet_name = ? "
+                "AND NOT EXISTS (SELECT 1 FROM tqc__scores s "
+                "WHERE s.rule_sn = r.sn AND s.score IS NOT NULL)",
+                (sheet,)
+            ).fetchone()[0]
         conn.close()
     except Exception:
         pass
@@ -82,7 +101,38 @@ def inject_nav_counts():
         val = rule.get(f"{field}_{lang}", "")
         return val if val else rule.get(field, "")
 
-    return {"nav_pending": pending, "_": _, "langs": LANGS, "t": t}
+    # Client-side i18n dictionary used by static/app.js (TQC_I18N.*).
+    i18n = {k: _(k) for k in (
+        "undo", "working", "please_enter_score", "score_confirmed",
+        "confirm_failed", "network_error", "cancel_confirmation",
+        "cancel_confirmation_btn", "confirmation_cancelled", "keep",
+        "uploading", "uploaded", "upload_failed", "deleted", "delete_failed",
+        "batch_confirmed", "auto_scored", "written", "write_failed",
+        "synced", "sync_failed", "confirm_all_title", "write_confirm_title",
+        "delete_confirm_title", "operation_failed",
+    )}
+
+    return {"nav_pending": pending, "_": _, "langs": LANGS, "t": t, "i18n": i18n}
+
+
+def _resolve_sheet(sn, quarter=None):
+    """Resolve the sheet_name for a score row.
+
+    Prefers the explicit *quarter*; falls back to the rule's sheet in the
+    database (best effort for legacy clients that do not send quarter).
+    Returns None when it cannot be determined.
+    """
+    if quarter in QUARTERS:
+        return _quarter_sheet(quarter)
+    try:
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT sheet_name FROM tqc__rules WHERE sn = ? LIMIT 1", (sn,)
+        ).fetchone()
+        conn.close()
+        return row["sheet_name"] if row else None
+    except Exception:
+        return None
 
 
 def _validate_workshop(workshop):
@@ -120,7 +170,7 @@ def index():
 
     online_rules = rules_by_way("Online", quarter)
     onsite_rules = rules_by_way("On-site", quarter)
-    scores = scores_for_workshop(workshop)
+    scores = scores_for_workshop(workshop, quarter)
 
     # Merge scores into rules (look up by SN)
     def merge(rule_list):
@@ -149,7 +199,7 @@ def index():
     online_modules = _group_by_module(online_merged)
     onsite_modules = _group_by_module(onsite_merged)
 
-    stats = progress_stats(workshop)
+    stats = progress_stats(workshop, quarter)
 
     return render_template(
         "index.html",
@@ -179,11 +229,11 @@ def item_detail(sn):
         return "Item not found", 404
 
     # Get score for (sn, workshop)
-    scores = scores_for_workshop(workshop)
+    scores = scores_for_workshop(workshop, quarter)
     score = scores.get(sn, {})
 
     # Get evidence list for (sn, workshop)
-    evidence = get_evidence(sn, workshop)
+    evidence = get_evidence(sn, workshop, quarter)
 
     # Compute prev/next SN for quick navigation
     all_sns = [r["sn"] for r in all_rules_list]
@@ -218,7 +268,7 @@ def review():
     status_filter = request.args.get("filter", "all")
 
     rules = all_rules(quarter)
-    scores = scores_for_workshop(workshop)
+    scores = scores_for_workshop(workshop, quarter)
 
     # Build items with status classification
     counts = {"auto": 0, "confirmed": 0, "pending": 0, "manual": 0}
@@ -233,16 +283,16 @@ def review():
         # Determine status:
         #   "auto"      — has auto_score, not confirmed
         #   "confirmed" — confirmed=1
-        #   "pending"   — no auto_score, not confirmed, score==0
-        #   "manual"    — otherwise
+        #   "pending"   — no score row at all
+        #   "manual"    — scored (including 0) but not confirmed
         if auto_score is not None and not confirmed:
             status = "auto"
         elif confirmed:
             status = "confirmed"
-        elif auto_score is None and not confirmed and (score_val or 0) == 0:
-            status = "pending"
-        else:
+        elif score_val is not None:
             status = "manual"
+        else:
+            status = "pending"
 
         counts[status] += 1
 
@@ -291,8 +341,8 @@ def export():
     quarter = _get_quarter()
 
     rules = all_rules(quarter)
-    scores = scores_for_workshop(workshop)
-    stats = progress_stats(workshop)
+    scores = scores_for_workshop(workshop, quarter)
+    stats = progress_stats(workshop, quarter)
 
     # Merge scores into rules
     merged = []
@@ -341,7 +391,7 @@ def export():
 
 @app.route("/api/confirm", methods=["POST"])
 def api_confirm():
-    """Confirm a single score. Body: {sn, workshop, score, max_score, auto_score, remarks}."""
+    """Confirm a single score. Body: {sn, workshop, score, max_score, auto_score, remarks, quarter}."""
     data = request.get_json(silent=True) or {}
     sn = data.get("sn")
     workshop = data.get("workshop")
@@ -353,6 +403,8 @@ def api_confirm():
     if not sn or not workshop:
         return jsonify({"error": "sn and workshop are required"}), 400
 
+    sheet_name = _resolve_sheet(sn, data.get("quarter"))
+
     upsert_score(
         rule_sn=sn,
         workshop=workshop,
@@ -362,6 +414,7 @@ def api_confirm():
         auto_reason=None,
         confirmed=1,
         remarks=remarks,
+        sheet_name=sheet_name,
     )
 
     return jsonify({"ok": True, "sn": sn, "workshop": workshop})
@@ -375,11 +428,20 @@ def api_undo_confirm():
     workshop = data.get("workshop")
     if not sn or not workshop:
         return jsonify({"ok": False, "error": "sn and workshop required"}), 400
+    sheet_name = _resolve_sheet(sn, data.get("quarter"))
     conn = get_conn()
-    conn.execute(
-        "UPDATE tqc__scores SET score = NULL, confirmed = 0, remarks = NULL WHERE rule_sn = ? AND workshop = ?",
-        (sn, workshop)
-    )
+    if sheet_name:
+        conn.execute(
+            "UPDATE tqc__scores SET score = NULL, confirmed = 0, remarks = NULL "
+            "WHERE rule_sn = ? AND workshop = ? AND (sheet_name = ? OR sheet_name IS NULL)",
+            (sn, workshop, sheet_name)
+        )
+    else:
+        conn.execute(
+            "UPDATE tqc__scores SET score = NULL, confirmed = 0, remarks = NULL "
+            "WHERE rule_sn = ? AND workshop = ?",
+            (sn, workshop)
+        )
     conn.commit(); conn.close()
     return jsonify({"ok": True})
 
@@ -389,20 +451,33 @@ def api_confirm_batch():
     """Batch confirm: UPDATE all auto-scored, unconfirmed rows for a workshop."""
     data = request.get_json(silent=True) or {}
     workshop = data.get("workshop")
+    quarter = data.get("quarter")
 
     if not workshop:
         return jsonify({"error": "workshop is required"}), 400
 
     conn = get_conn()
     try:
-        result = conn.execute(
-            """UPDATE tqc__scores
-               SET confirmed = 1, updated_at = datetime('now')
-               WHERE workshop = ?
-                 AND auto_score IS NOT NULL
-                 AND confirmed = 0""",
-            (workshop,),
-        )
+        if quarter in QUARTERS:
+            sheet = _quarter_sheet(quarter)
+            result = conn.execute(
+                """UPDATE tqc__scores
+                   SET confirmed = 1, updated_at = datetime('now')
+                   WHERE workshop = ?
+                     AND auto_score IS NOT NULL
+                     AND confirmed = 0
+                     AND (sheet_name = ? OR sheet_name IS NULL)""",
+                (workshop, sheet),
+            )
+        else:
+            result = conn.execute(
+                """UPDATE tqc__scores
+                   SET confirmed = 1, updated_at = datetime('now')
+                   WHERE workshop = ?
+                     AND auto_score IS NOT NULL
+                     AND confirmed = 0""",
+                (workshop,),
+            )
         conn.commit()
         updated = result.rowcount
     finally:
@@ -486,7 +561,7 @@ def api_sync_rules():
     data = request.get_json(silent=True) or {}
     quarter = data.get("quarter")
     try:
-        sync_rules_to_db(quarter)
+        sync_rules_to_db(quarter, country=g.country)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -494,15 +569,16 @@ def api_sync_rules():
 
 @app.route("/api/auto-score", methods=["POST"])
 def api_auto_score():
-    """Run auto-scoring for a workshop. Body: {workshop}."""
+    """Run auto-scoring for a workshop. Body: {workshop, quarter}."""
     data = request.get_json(silent=True) or {}
     workshop = data.get("workshop")
+    quarter = data.get("quarter")
 
     if not workshop:
         return jsonify({"error": "workshop is required"}), 400
 
     try:
-        count = run_auto_scoring(workshop)
+        count = run_auto_scoring(workshop, quarter)
         return jsonify({"ok": True, "scored": count, "workshop": workshop})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -510,15 +586,16 @@ def api_auto_score():
 
 @app.route("/api/write-scores", methods=["POST"])
 def api_write_scores():
-    """Write confirmed scores to Google Sheets. Body: {workshop}."""
+    """Write confirmed scores to Google Sheets. Body: {workshop, quarter}."""
     data = request.get_json(silent=True) or {}
     workshop = data.get("workshop")
+    quarter = data.get("quarter")
 
     if not workshop:
         return jsonify({"error": "workshop is required"}), 400
 
     try:
-        write_scores_to_sheet(workshop)
+        write_scores_to_sheet(workshop, quarter, country=g.country)
         return jsonify({"ok": True, "workshop": workshop})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

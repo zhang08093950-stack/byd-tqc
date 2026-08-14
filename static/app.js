@@ -44,7 +44,7 @@ function showToast(msg, type, undoAction) {
 
   if (undoAction) {
     var undoBtn = document.createElement('button');
-    undoBtn.textContent = 'Undo';
+    undoBtn.textContent = (window.TQC_I18N && TQC_I18N.undo) || 'Undo';
     undoBtn.style.cssText = 'margin-left:auto;background:none;border:1px solid currentColor;color:inherit;padding:4px 10px;border-radius:6px;font-weight:600;font-size:0.78rem;cursor:pointer;font-family:inherit;flex-shrink:0;';
     undoBtn.addEventListener('click', function(e) {
       e.stopPropagation();
@@ -151,12 +151,28 @@ function setLoading(btn, loading) {
     btn.classList.add('loading');
     btn.disabled = true;
     btn._origText = btn.textContent;
-    btn.textContent = btn._origText.replace(/^.*$/, '').trim() || 'Working';
+    btn.textContent = (window.TQC_I18N && TQC_I18N.working) || 'Working...';
   } else {
     btn.classList.remove('loading');
     btn.disabled = false;
     if (btn._origText) btn.textContent = btn._origText;
   }
+}
+
+/* ── Current quarter helper ────────────────────────────────────────── */
+function currentQuarter() {
+  return new URLSearchParams(location.search).get('quarter') || '2026 Q2';
+}
+
+/* ── API URL helper — always propagate the active country/lang ─────── */
+function apiUrl(path) {
+  var u = new URL(path, location.origin);
+  var params = new URLSearchParams(location.search);
+  var country = params.get('country');
+  if (country) u.searchParams.set('country', country);
+  var lang = params.get('lang');
+  if (lang) u.searchParams.set('lang', lang);
+  return u.toString();
 }
 
 /* ── confirmScore ──────────────────────────────────────────────────── */
@@ -169,16 +185,16 @@ function confirmScore(sn, workshop, btnEl) {
   var autoScore = autoScoreEl ? parseFloat(autoScoreEl.textContent) || null : null;
 
   if (score === null || isNaN(score)) {
-    showToast('Please enter a valid score', 'error');
+    showToast((window.TQC_I18N && TQC_I18N.please_enter_score) || 'Please enter a valid score', 'error');
     return;
   }
 
-  var body = { sn: sn, workshop: workshop, score: score, remarks: remarks };
+  var body = { sn: sn, workshop: workshop, score: score, remarks: remarks, quarter: currentQuarter() };
   if (autoScore !== null) body.auto_score = autoScore;
 
   if (btnEl) setLoading(btnEl, true);
 
-  fetch('/api/confirm', {
+  fetch(apiUrl('/api/confirm'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -187,77 +203,77 @@ function confirmScore(sn, workshop, btnEl) {
     .then(function(data) {
       if (btnEl) setLoading(btnEl, false);
       if (data.ok) {
-        showToast('Score confirmed', 'success', function() {
-          fetch('/api/undo-confirm', {
+        showToast((window.TQC_I18N && TQC_I18N.score_confirmed) || 'Score confirmed', 'success', function() {
+          fetch(apiUrl('/api/undo-confirm'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sn: sn, workshop: workshop })
+            body: JSON.stringify({ sn: sn, workshop: workshop, quarter: currentQuarter() })
           }).then(function() { location.reload(); });
         });
         if (btnEl) {
-          btnEl.textContent = 'Confirmed';
+          btnEl.textContent = (window.TQC_I18N && TQC_I18N.confirmed) || 'Confirmed';
           btnEl.classList.remove('btn-primary');
           btnEl.classList.add('btn-success');
           btnEl.disabled = true;
         }
         setTimeout(function() { location.reload(); }, 4000);
       } else {
-        showToast('Failed: ' + (data.error || 'Unknown error'), 'error');
+        showToast(((window.TQC_I18N && TQC_I18N.operation_failed) || 'Failed: {}').replace('{}', data.error || 'Unknown error'), 'error');
       }
     })
     .catch(function(err) {
       if (btnEl) setLoading(btnEl, false);
-      showToast('Network error: ' + err.message, 'error');
+      showToast(((window.TQC_I18N && TQC_I18N.network_error) || 'Network error: {}').replace('{}', err.message), 'error');
     });
 }
 
 /* ── unconfirmScore ───────────────────────────────────────────────── */
 function unconfirmScore(sn, workshop) {
-  showSheet('Cancel this confirmation?', [
-    { label: 'Cancel Confirmation', destructive: true, action: function() {
-      fetch('/api/undo-confirm', {
+  showSheet((window.TQC_I18N && TQC_I18N.cancel_confirmation) || 'Cancel this confirmation?', [
+    { label: (window.TQC_I18N && TQC_I18N.cancel_confirmation_btn) || 'Cancel Confirmation', destructive: true, action: function() {
+      fetch(apiUrl('/api/undo-confirm'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sn: sn, workshop: workshop })
+        body: JSON.stringify({ sn: sn, workshop: workshop, quarter: currentQuarter() })
       })
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (data.ok) {
-            showToast('Confirmation cancelled', 'success');
+            showToast((window.TQC_I18N && TQC_I18N.confirmation_cancelled) || 'Confirmation cancelled', 'success');
             setTimeout(function() { location.reload(); }, 600);
           } else {
-            showToast('Failed: ' + (data.error || 'Unknown error'), 'error');
+            showToast(((window.TQC_I18N && TQC_I18N.operation_failed) || 'Failed: {}').replace('{}', data.error || 'Unknown error'), 'error');
           }
         })
-        .catch(function(err) { showToast('Network error: ' + err.message, 'error'); });
+        .catch(function(err) { showToast(((window.TQC_I18N && TQC_I18N.network_error) || 'Network error: {}').replace('{}', err.message), 'error'); });
     }},
-    { label: 'Keep', cancel: true, action: function() {} }
+    { label: (window.TQC_I18N && TQC_I18N.keep) || 'Keep', cancel: true, action: function() {} }
   ]);
 }
 
 /* ── confirmAll ────────────────────────────────────────────────────── */
 function confirmAll(workshop) {
-  showSheet('Confirm all auto-scored items?', [
-    { label: 'Confirm All', destructive: false, action: function() {
-      fetch('/api/confirm-batch', {
+  showSheet((window.TQC_I18N && TQC_I18N.confirm_all_title) || 'Confirm all auto-scored items?', [
+    { label: (window.TQC_I18N && TQC_I18N.confirm_all) || 'Confirm All', destructive: false, action: function() {
+      fetch(apiUrl('/api/confirm-batch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workshop: workshop })
+        body: JSON.stringify({ workshop: workshop, quarter: currentQuarter() })
       })
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (data.ok) {
-            showToast('Confirmed ' + data.updated + ' items', 'success');
+            showToast(((window.TQC_I18N && TQC_I18N.batch_confirmed) || 'Confirmed {} items').replace('{}', data.updated), 'success');
             setTimeout(function() { location.reload(); }, 800);
           } else {
-            showToast('Failed: ' + (data.error || 'Unknown error'), 'error');
+            showToast(((window.TQC_I18N && TQC_I18N.operation_failed) || 'Failed: {}').replace('{}', data.error || 'Unknown error'), 'error');
           }
         })
         .catch(function(err) {
-          showToast('Network error: ' + err.message, 'error');
+          showToast(((window.TQC_I18N && TQC_I18N.network_error) || 'Network error: {}').replace('{}', err.message), 'error');
         });
     }},
-    { label: 'Cancel', cancel: true, action: function() {} }
+    { label: (window.TQC_I18N && TQC_I18N.cancel) || 'Cancel', cancel: true, action: function() {} }
   ]);
 }
 
@@ -269,25 +285,25 @@ function uploadEvidence(sn, workshop) {
   input.onchange = function() {
     var file = input.files[0];
     if (!file) return;
-    var quarter = new URLSearchParams(location.search).get('quarter') || '2026 Q2';
+    var quarter = currentQuarter();
     var formData = new FormData();
     formData.append('file', file);
     formData.append('sn', sn);
     formData.append('workshop', workshop);
     formData.append('quarter', quarter);
-    showToast('Uploading...', 'info');
-    fetch('/api/upload', { method: 'POST', body: formData })
+    showToast((window.TQC_I18N && TQC_I18N.uploading) || 'Uploading...', 'info');
+    fetch(apiUrl('/api/upload'), { method: 'POST', body: formData })
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.ok) {
-          showToast('Uploaded', 'success');
+          showToast((window.TQC_I18N && TQC_I18N.uploaded) || 'Uploaded', 'success');
           setTimeout(function() { location.reload(); }, 600);
         } else {
-          showToast('Upload failed: ' + (data.error || 'Unknown error'), 'error');
+          showToast(((window.TQC_I18N && TQC_I18N.upload_failed) || 'Upload failed: {}').replace('{}', data.error || 'Unknown error'), 'error');
         }
       })
       .catch(function(err) {
-        showToast('Network error: ' + err.message, 'error');
+        showToast(((window.TQC_I18N && TQC_I18N.network_error) || 'Network error: {}').replace('{}', err.message), 'error');
       });
   };
   input.click();
@@ -295,73 +311,73 @@ function uploadEvidence(sn, workshop) {
 
 /* ── deleteEvidence ────────────────────────────────────────────────── */
 function deleteEvidence(eid) {
-  showSheet('Delete this evidence?', [
-    { label: 'Delete', destructive: true, action: function() {
-      fetch('/api/evidence/' + eid + '/delete', { method: 'POST' })
+  showSheet((window.TQC_I18N && TQC_I18N.delete_confirm_title) || 'Delete this evidence?', [
+    { label: (window.TQC_I18N && TQC_I18N.delete_btn) || 'Delete', destructive: true, action: function() {
+      fetch(apiUrl('/api/evidence/' + eid + '/delete'), { method: 'POST' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (data.ok) {
-            showToast('Deleted', 'success');
+            showToast((window.TQC_I18N && TQC_I18N.deleted) || 'Deleted', 'success');
             setTimeout(function() { location.reload(); }, 500);
           } else {
-            showToast('Delete failed: ' + (data.error || 'Unknown error'), 'error');
+            showToast(((window.TQC_I18N && TQC_I18N.delete_failed) || 'Delete failed: {}').replace('{}', data.error || 'Unknown error'), 'error');
           }
         })
         .catch(function(err) {
-          showToast('Network error: ' + err.message, 'error');
+          showToast(((window.TQC_I18N && TQC_I18N.network_error) || 'Network error: {}').replace('{}', err.message), 'error');
         });
     }},
-    { label: 'Cancel', cancel: true, action: function() {} }
+    { label: (window.TQC_I18N && TQC_I18N.cancel) || 'Cancel', cancel: true, action: function() {} }
   ]);
 }
 
 /* ── runAutoScore ──────────────────────────────────────────────────── */
 function runAutoScore(workshop) {
-  var btn = event.target;
-  setLoading(btn, true);
-  fetch('/api/auto-score', {
+  var btn = (typeof event !== 'undefined') ? event.target : null;
+  if (btn) setLoading(btn, true);
+  fetch(apiUrl('/api/auto-score'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workshop: workshop })
+    body: JSON.stringify({ workshop: workshop, quarter: currentQuarter() })
   })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      setLoading(btn, false);
+      if (btn) setLoading(btn, false);
       if (data.ok) {
-        showToast('Auto scored ' + data.scored + ' items', 'success');
+        showToast(((window.TQC_I18N && TQC_I18N.auto_scored) || 'Auto scored {} items').replace('{}', data.scored), 'success');
         setTimeout(function() { location.reload(); }, 800);
       } else {
-        showToast('Failed: ' + (data.error || 'Unknown error'), 'error');
+        showToast(((window.TQC_I18N && TQC_I18N.operation_failed) || 'Failed: {}').replace('{}', data.error || 'Unknown error'), 'error');
       }
     })
     .catch(function(err) {
-      setLoading(btn, false);
-      showToast('Network error: ' + err.message, 'error');
+      if (btn) setLoading(btn, false);
+      showToast(((window.TQC_I18N && TQC_I18N.network_error) || 'Network error: {}').replace('{}', err.message), 'error');
     });
 }
 
 /* ── writeToSheet ──────────────────────────────────────────────────── */
 function writeToSheet(workshop) {
-  showSheet('Write confirmed scores to Google Sheet?', [
-    { label: 'Write to Sheet', action: function() {
-      fetch('/api/write-scores', {
+  showSheet((window.TQC_I18N && TQC_I18N.write_confirm_title) || 'Write confirmed scores to Google Sheet?', [
+    { label: (window.TQC_I18N && TQC_I18N.write_to_sheet) || 'Write to Sheet', action: function() {
+      fetch(apiUrl('/api/write-scores'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workshop: workshop })
+        body: JSON.stringify({ workshop: workshop, quarter: currentQuarter() })
       })
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (data.ok) {
-            showToast('Written to Google Sheet', 'success');
+            showToast((window.TQC_I18N && TQC_I18N.written) || 'Written to Google Sheet', 'success');
           } else {
-            showToast('Write failed: ' + (data.error || 'Unknown error'), 'error');
+            showToast(((window.TQC_I18N && TQC_I18N.write_failed) || 'Write failed: {}').replace('{}', data.error || 'Unknown error'), 'error');
           }
         })
         .catch(function(err) {
-          showToast('Network error: ' + err.message, 'error');
+          showToast(((window.TQC_I18N && TQC_I18N.network_error) || 'Network error: {}').replace('{}', err.message), 'error');
         });
     }},
-    { label: 'Cancel', cancel: true, action: function() {} }
+    { label: (window.TQC_I18N && TQC_I18N.cancel) || 'Cancel', cancel: true, action: function() {} }
   ]);
 }
 
@@ -389,27 +405,27 @@ function closeLightbox(overlay) {
 }
 
 /* ── syncRules ─────────────────────────────────────────────────────── */
-function syncRules() {
-  var btn = event.target;
-  setLoading(btn, true);
-  var quarter = new URLSearchParams(location.search).get('quarter') || '2026 Q2';
-  fetch('/api/sync-rules', {
+function syncRules(btn) {
+  if (!btn && typeof event !== 'undefined') btn = event.target;
+  if (btn) setLoading(btn, true);
+  var quarter = currentQuarter();
+  fetch(apiUrl('/api/sync-rules'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ quarter: quarter })
   })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      setLoading(btn, false);
+      if (btn) setLoading(btn, false);
       if (data.ok) {
-        showToast('Rules synced', 'success');
+        showToast((window.TQC_I18N && TQC_I18N.synced) || 'Rules synced', 'success');
         setTimeout(function() { location.reload(); }, 800);
       } else {
-        showToast('Sync failed: ' + (data.error || 'Unknown error'), 'error');
+        showToast(((window.TQC_I18N && TQC_I18N.sync_failed) || 'Sync failed: {}').replace('{}', data.error || 'Unknown error'), 'error');
       }
     })
     .catch(function(err) {
-      setLoading(btn, false);
-      showToast('Network error: ' + err.message, 'error');
+      if (btn) setLoading(btn, false);
+      showToast(((window.TQC_I18N && TQC_I18N.network_error) || 'Network error: {}').replace('{}', err.message), 'error');
     });
 }

@@ -87,6 +87,7 @@ def _init_one_db(db_path):
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             rule_sn       TEXT NOT NULL,
             workshop      TEXT NOT NULL,
+            sheet_name    TEXT,
             score         INTEGER,
             max_score     INTEGER DEFAULT 100,
             auto_score    INTEGER,
@@ -96,7 +97,7 @@ def _init_one_db(db_path):
             evidence_ids  TEXT DEFAULT '[]',
             created_at    TEXT DEFAULT (datetime('now')),
             updated_at    TEXT DEFAULT (datetime('now')),
-            UNIQUE(rule_sn, workshop)
+            UNIQUE(rule_sn, workshop, sheet_name)
         );
 
         CREATE TABLE IF NOT EXISTS tqc__evidence (
@@ -107,6 +108,7 @@ def _init_one_db(db_path):
             mime_type     TEXT,
             data          BLOB,
             thumbnail     BLOB,
+            quarter       TEXT,
             created_at    TEXT DEFAULT (datetime('now'))
         );
 
@@ -135,6 +137,75 @@ def _init_one_db(db_path):
                 conn.execute(f"ALTER TABLE tqc__rules ADD COLUMN {col}")
             except sqlite3.OperationalError:
                 pass  # column already exists
+
+        # Migrate: tqc__evidence.quarter (evidence uploads pass a quarter)
+        try:
+            conn.execute("ALTER TABLE tqc__evidence ADD COLUMN quarter TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+        # Migrate: tqc__scores.sheet_name + UNIQUE(rule_sn, workshop, sheet_name).
+        # Older schemas had UNIQUE(rule_sn, workshop), which makes scores from
+        # different quarters overwrite each other whenever SNs are reused.
+        try:
+            conn.execute("ALTER TABLE tqc__scores ADD COLUMN sheet_name TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+        # Detect the old UNIQUE(rule_sn, workshop) constraint and rebuild the
+        # table so scores are unique per (rule_sn, workshop, sheet_name).
+        need_rebuild = False
+        for idx in conn.execute("PRAGMA index_list(tqc__scores)").fetchall():
+            if not idx[2]:  # 2 == "unique" flag
+                continue
+            idx_cols = [
+                r[2] for r in conn.execute(f"PRAGMA index_info({idx[1]})").fetchall()
+            ]
+            if idx_cols == ["rule_sn", "workshop"]:
+                need_rebuild = True
+                break
+        if need_rebuild:
+            conn.execute("ALTER TABLE tqc__scores RENAME TO tqc__scores_old")
+            conn.execute("""
+                CREATE TABLE tqc__scores (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rule_sn       TEXT NOT NULL,
+                    workshop      TEXT NOT NULL,
+                    sheet_name    TEXT,
+                    score         INTEGER,
+                    max_score     INTEGER DEFAULT 100,
+                    auto_score    INTEGER,
+                    auto_reason   TEXT,
+                    confirmed     INTEGER DEFAULT 0,
+                    remarks       TEXT,
+                    evidence_ids  TEXT DEFAULT '[]',
+                    created_at    TEXT DEFAULT (datetime('now')),
+                    updated_at    TEXT DEFAULT (datetime('now')),
+                    UNIQUE(rule_sn, workshop, sheet_name)
+                )
+            """)
+            conn.execute("""
+                INSERT INTO tqc__scores
+                    (id, rule_sn, workshop, sheet_name, score, max_score,
+                     auto_score, auto_reason, confirmed, remarks,
+                     evidence_ids, created_at, updated_at)
+                SELECT id, rule_sn, workshop, NULL, score, max_score,
+                       auto_score, auto_reason, confirmed, remarks,
+                       evidence_ids, created_at, updated_at
+                FROM tqc__scores_old
+            """)
+            conn.execute("DROP TABLE tqc__scores_old")
+
+        # Backfill sheet_name for score rows whose rule exists in exactly one
+        # sheet (i.e. one quarter). Ambiguous rows stay NULL.
+        conn.execute("""
+            UPDATE tqc__scores SET sheet_name = (
+                SELECT r.sheet_name FROM tqc__rules r
+                WHERE r.sn = tqc__scores.rule_sn
+                GROUP BY r.sheet_name HAVING COUNT(*) = 1
+                LIMIT 1
+            ) WHERE sheet_name IS NULL
+        """)
 
         # Import seed data if rules table is empty
         count = conn.execute("SELECT COUNT(*) FROM tqc__rules").fetchone()[0]
@@ -220,30 +291,42 @@ def rules_by_way(way, quarter=None):
         conn.close()
 
 
-def scores_for_workshop(workshop):
-    """Return all scores for a workshop as a dict keyed by rule_sn."""
+def scores_for_workshop(workshop, quarter=None):
+    """Return all scores for a workshop as a dict keyed by rule_sn.
+
+    When *quarter* is given, only rows belonging to that quarter's sheet
+    are returned (plus legacy rows with no sheet_name).
+    """
     conn = get_conn()
     try:
-        rows = conn.execute(
-            "SELECT * FROM tqc__scores WHERE workshop = ?",
-            (workshop,)
-        ).fetchall()
+        if quarter:
+            sheet = _quarter_sheet(quarter)
+            rows = conn.execute(
+                "SELECT * FROM tqc__scores WHERE workshop = ? "
+                "AND (sheet_name = ? OR sheet_name IS NULL)",
+                (workshop, sheet)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM tqc__scores WHERE workshop = ?",
+                (workshop,)
+            ).fetchall()
         return {r["rule_sn"]: dict(r) for r in rows}
     finally:
         conn.close()
 
 
 def upsert_score(rule_sn, workshop, score, max_score, auto_score,
-                 auto_reason, confirmed, remarks):
-    """Insert a score row or update it on (rule_sn, workshop) conflict."""
+                 auto_reason, confirmed, remarks, sheet_name=None):
+    """Insert a score row or update it on (rule_sn, workshop, sheet_name) conflict."""
     conn = get_conn()
     try:
         conn.execute("""
             INSERT INTO tqc__scores
-                (rule_sn, workshop, score, max_score, auto_score,
+                (rule_sn, workshop, sheet_name, score, max_score, auto_score,
                  auto_reason, confirmed, remarks)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(rule_sn, workshop) DO UPDATE SET
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(rule_sn, workshop, sheet_name) DO UPDATE SET
                 score       = excluded.score,
                 max_score   = excluded.max_score,
                 auto_score  = excluded.auto_score,
@@ -251,24 +334,38 @@ def upsert_score(rule_sn, workshop, score, max_score, auto_score,
                 confirmed   = excluded.confirmed,
                 remarks     = excluded.remarks,
                 updated_at  = datetime('now')
-        """, (rule_sn, workshop, score, max_score, auto_score,
+        """, (rule_sn, workshop, sheet_name, score, max_score, auto_score,
               auto_reason, confirmed, remarks))
         conn.commit()
     finally:
         conn.close()
 
 
-def get_evidence(rule_sn, workshop):
-    """Return evidence metadata list for a rule + workshop (no BLOB data)."""
+def get_evidence(rule_sn, workshop, quarter=None):
+    """Return evidence metadata list for a rule + workshop (no BLOB data).
+
+    When *quarter* is given, only evidence for that quarter is returned
+    (plus legacy rows with no quarter).
+    """
     conn = get_conn()
     try:
-        rows = conn.execute(
-            """SELECT id, rule_sn, workshop, filename, mime_type,
-                      thumbnail, created_at
-               FROM tqc__evidence
-               WHERE rule_sn = ? AND workshop = ?""",
-            (rule_sn, workshop)
-        ).fetchall()
+        if quarter:
+            rows = conn.execute(
+                """SELECT id, rule_sn, workshop, filename, mime_type,
+                          thumbnail, quarter, created_at
+                   FROM tqc__evidence
+                   WHERE rule_sn = ? AND workshop = ?
+                     AND (quarter = ? OR quarter IS NULL)""",
+                (rule_sn, workshop, quarter)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT id, rule_sn, workshop, filename, mime_type,
+                          thumbnail, quarter, created_at
+                   FROM tqc__evidence
+                   WHERE rule_sn = ? AND workshop = ?""",
+                (rule_sn, workshop)
+            ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -287,8 +384,11 @@ def get_evidence_data(evidence_id):
         conn.close()
 
 
-def progress_stats(workshop):
+def progress_stats(workshop, quarter=None):
     """Return aggregate scoring progress for a single workshop.
+
+    When *quarter* is given, item counts / max points are scoped to that
+    quarter's sheet so the numbers match what the page actually displays.
 
     Returns a dict with:
         scored_count   — number of score rows with a non-null score
@@ -298,20 +398,43 @@ def progress_stats(workshop):
     """
     conn = get_conn()
     try:
-        total_items = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM tqc__rules"
-        ).fetchone()["cnt"]
-        scored_count = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM tqc__scores WHERE workshop = ? AND score IS NOT NULL",
-            (workshop,)
-        ).fetchone()["cnt"]
-        scored_points = conn.execute(
-            "SELECT COALESCE(SUM(score), 0) AS total FROM tqc__scores WHERE workshop = ?",
-            (workshop,)
-        ).fetchone()["total"]
-        total_points = conn.execute(
-            "SELECT COALESCE(SUM(max_score), 0) AS total FROM tqc__rules"
-        ).fetchone()["total"]
+        if quarter:
+            sheet = _quarter_sheet(quarter)
+            total_items = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM tqc__rules WHERE sheet_name = ?",
+                (sheet,)
+            ).fetchone()["cnt"]
+            scored_count = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM tqc__scores "
+                "WHERE workshop = ? AND score IS NOT NULL "
+                "AND (sheet_name = ? OR sheet_name IS NULL)",
+                (workshop, sheet)
+            ).fetchone()["cnt"]
+            scored_points = conn.execute(
+                "SELECT COALESCE(SUM(score), 0) AS total FROM tqc__scores "
+                "WHERE workshop = ? AND (sheet_name = ? OR sheet_name IS NULL)",
+                (workshop, sheet)
+            ).fetchone()["total"]
+            total_points = conn.execute(
+                "SELECT COALESCE(SUM(max_score), 0) AS total "
+                "FROM tqc__rules WHERE sheet_name = ?",
+                (sheet,)
+            ).fetchone()["total"]
+        else:
+            total_items = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM tqc__rules"
+            ).fetchone()["cnt"]
+            scored_count = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM tqc__scores WHERE workshop = ? AND score IS NOT NULL",
+                (workshop,)
+            ).fetchone()["cnt"]
+            scored_points = conn.execute(
+                "SELECT COALESCE(SUM(score), 0) AS total FROM tqc__scores WHERE workshop = ?",
+                (workshop,)
+            ).fetchone()["total"]
+            total_points = conn.execute(
+                "SELECT COALESCE(SUM(max_score), 0) AS total FROM tqc__rules"
+            ).fetchone()["total"]
         return {
             "scored_count":   scored_count,
             "total_items":    total_items,

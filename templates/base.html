@@ -44,12 +44,28 @@
     </div>
   </nav>
 
-  <script src="/static/app.js?v=8"></script>
+  <script src="/static/app.js?v=9"></script>
 
   <script>
+  window.TQC_I18N = {{ i18n | tojson }};
+
   function switchLang(lang) {
     var u = new URL(location.href);
     u.searchParams.set('lang', lang);
+    location.href = u.toString();
+  }
+
+  // Update the current URL with the given query overrides, preserving all
+  // existing params (country, workshop, quarter, lang, filter, ...).
+  function navigateWith(overrides) {
+    var u = new URL(location.href);
+    for (var k in overrides) {
+      if (overrides[k] !== null && overrides[k] !== undefined && overrides[k] !== '') {
+        u.searchParams.set(k, overrides[k]);
+      } else {
+        u.searchParams.delete(k);
+      }
+    }
     location.href = u.toString();
   }
   </script>
